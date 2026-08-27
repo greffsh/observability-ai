@@ -1,6 +1,5 @@
-import { createServer } from "node:http"
 import { Config, Effect } from "effect"
-import { requestHandler } from "./http.js"
+import { buildApp } from "./app.js"
 
 const configuration = Config.all({
   port: Config.integer("PORT").pipe(Config.withDefault(8080))
@@ -8,12 +7,12 @@ const configuration = Config.all({
 
 const main = Effect.gen(function* () {
   const { port } = yield* configuration
+  const app = buildApp()
 
-  const server = createServer(requestHandler)
-
-  yield* Effect.async<void, Error>((resume) => {
-    server.once("error", (error) => resume(Effect.fail(error)))
-    server.listen(port, "0.0.0.0", () => resume(Effect.void))
+  yield* Effect.tryPromise({
+    try: () => app.listen({ port, host: "0.0.0.0" }),
+    catch: (error) =>
+      new Error("Failed to start Analyzer HTTP server", { cause: error })
   })
 
   yield* Effect.logInfo(`Analyzer listening on port ${port}`)

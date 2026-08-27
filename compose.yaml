@@ -1,6 +1,25 @@
 name: grafana-ai
 
 services:
+  checkout-api:
+    build:
+      context: ./services/checkout-api
+    environment:
+      PORT: 8081
+    ports:
+      - "${CHECKOUT_API_PORT:-8081}:8081"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:8081/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
   analyzer:
     build:
       context: ./services/analyzer

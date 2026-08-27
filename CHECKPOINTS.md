@@ -124,7 +124,7 @@ O formato definitivo e os nomes dos campos ainda serão decididos, mas essas inf
 | DT-01 | Papel do n8n                                | Removido do escopo inicial                                 | CP-04                     | DECIDIDO |
 | DT-02 | Linguagem do Analyzer                       | TypeScript                                                 | CP-04                     | DECIDIDO |
 | DT-03 | Banco da PoC                                | PostgreSQL                                                 | CP-05                     | DECIDIDO |
-| DT-04 | Fontes de observabilidade locais            | Logs + métricas; incluir traces                            | CP-03                     | PENDENTE |
+| DT-04 | Fontes de observabilidade locais            | Logs + métricas; traces adiados                            | CP-03                     | DECIDIDO |
 | DT-05 | Provedor e modelo de IA                     | A definir                                                  | CP-09                     | PENDENTE |
 | DT-06 | Estratégia de acesso ao modelo              | API direta; gateway interno; abstração própria             | CP-09                     | PENDENTE |
 | DT-07 | Canal inicial de notificação                | Webhook local enviado diretamente pelo Analyzer            | CP-11                     | DECIDIDO |
@@ -132,6 +132,7 @@ O formato definitivo e os nomes dos campos ainda serão decididos, mas essas inf
 | DT-09 | Metadados de criticidade dos serviços       | Arquivo versionado; catálogo; labels do Grafana            | CP-08                     | PENDENTE |
 | DT-10 | Política de retenção de payloads e análises | A definir                                                  | Antes de usar dados reais | PENDENTE |
 | DT-11 | Framework do Analyzer                       | Effect estável com adoção controlada                       | CP-04                     | DECIDIDO |
+| DT-12 | Framework HTTP                              | Fastify nas aplicações TypeScript                          | CP-03                     | DECIDIDO |
 
 ## Inventário preliminar de contas e credenciais
 
@@ -244,7 +245,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Linguagem aprovada para o Analyzer:** TypeScript.
 
-**Framework aprovado:** usar a versão estável do Effect de forma controlada, principalmente para erros tipados, validação de contratos, configuração, injeção de dependências, retries, timeouts e testes. Evitar na PoC APIs RC ou experimentais e abstrações avançadas que não sejam necessárias ao fluxo.
+**Frameworks aprovados:** usar Fastify na borda HTTP das aplicações TypeScript e a versão estável do Effect no núcleo do Analyzer, principalmente para erros tipados, validação de contratos, configuração, injeção de dependências, retries, timeouts e testes. Evitar na PoC APIs RC ou experimentais e abstrações avançadas que não sejam necessárias ao fluxo.
 
 **Notificação aprovada:** o Analyzer notificará diretamente por uma interface `Notifier`, começando com um webhook local. Isso concentra política, tentativa, resultado e auditoria no dono do incidente. O n8n foi removido do escopo inicial porque sua responsabilidade de classificação já pertence ao Analyzer; poderá ser reavaliado se surgir uma necessidade concreta de orquestração visual ou integração.
 
@@ -285,7 +286,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 ### CP-03 — Produzir sinais controlados
 
-**Estado:** `PENDENTE`
+**Estado:** `EM ANDAMENTO`
 
 **Objetivo:** criar uma fonte determinística de falhas para que os testes não dependam de incidentes reais.
 
@@ -298,13 +299,47 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Critérios de aceite:**
 
-- [ ] É possível iniciar e interromper a falha sob demanda.
+- [x] É possível iniciar e interromper a falha sob demanda.
 - [ ] Os sinais aparecem na fonte escolhida e podem ser consultados no Grafana.
 - [ ] Cada sinal contém dados suficientes para identificar serviço, ambiente e período.
 
-**Decisão necessária:** DT-04.
+**Decisão técnica:** produzir logs e métricas no primeiro corte; traces ficam adiados até existir uma hipótese que justifique sua complexidade.
 
-**Evidências:** _a preencher_
+#### CP-03A — Aplicação e falha controlável
+
+**Estado:** `CONCLUÍDO`
+
+- [x] `checkout-api` inicia saudável e expõe `GET /health`.
+- [x] `GET /checkout` responde `200` em operação normal.
+- [x] `POST /control/failure` ativa deterministicamente uma resposta `503` no checkout.
+- [x] `DELETE /control/failure` interrompe a falha e restaura a resposta `200`.
+- [x] O health check continua saudável durante a falha simulada, distinguindo processo ativo de operação degradada.
+
+**Evidências:** dois testes automatizados, typecheck sem erros, build do container concluído e sequência manual `200 → 503 → 200` validada em 2026-08-27.
+
+#### CP-03A.1 — Padronizar a borda HTTP
+
+**Estado:** `CONCLUÍDO`
+
+- [x] `checkout-api` migrada das primitivas HTTP do Node para Fastify.
+- [x] Analyzer migrado das primitivas HTTP do Node para Fastify.
+- [x] Rotas e contratos externos preservados.
+- [x] Testes usam `Fastify.inject()` e não abrem portas TCP.
+- [x] Imagens reconstruídas e ambos os containers confirmados saudáveis.
+
+**Evidências:** três testes automatizados e typecheck das duas aplicações concluídos; health check do Analyzer e sequência externa `200 → 503 → 200` da `checkout-api` repetidos com sucesso em 2026-08-27.
+
+#### CP-03B — Logs estruturados no Loki
+
+**Estado:** `PENDENTE`
+
+Adicionar identidade de serviço e ambiente aos logs e comprovar sua consulta no Loki/Grafana.
+
+#### CP-03C — Métricas no Prometheus
+
+**Estado:** `PENDENTE`
+
+Expor métricas da operação de checkout, coletá-las no Prometheus e comprovar sua consulta no Grafana.
 
 ---
 
@@ -672,6 +707,26 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** menos componentes e credenciais, auditoria concentrada e contratos tipados; integrações visuais do n8n ficam fora da PoC e podem ser reconsideradas quando houver caso concreto.
 - **Checkpoints afetados:** CP-01, CP-02, CP-04, CP-05 e CP-11.
 
+### DEC-004 — Sinais iniciais de observabilidade
+
+- **Data:** 2026-08-27
+- **Estado:** aceita
+- **Contexto:** a PoC precisa correlacionar falhas reproduzíveis com evidências, mantendo o primeiro ciclo pequeno e auditável.
+- **Decisão:** instrumentar inicialmente logs e métricas da `checkout-api`; traces ficam fora deste corte.
+- **Alternativas consideradas:** somente logs; logs, métricas e traces desde o início.
+- **Consequências:** Prometheus e Loki cobrem as hipóteses iniciais com menos instrumentação; traces podem ser adicionados se os cenários demonstrarem uma lacuna real de correlação.
+- **Checkpoints afetados:** CP-03, CP-06 e CP-07.
+
+### DEC-005 — Fastify como borda HTTP
+
+- **Data:** 2026-08-27
+- **Estado:** aceita
+- **Contexto:** as aplicações começavam a acumular roteamento, respostas e testes diretamente sobre primitivas HTTP do Node.
+- **Decisão:** usar Fastify na borda HTTP da `checkout-api` e do Analyzer; manter Effect no núcleo e na composição dos casos de uso do Analyzer.
+- **Alternativas consideradas:** continuar com `node:http`; adotar o servidor HTTP de `@effect/platform`; usar Express.
+- **Consequências:** roteamento, ciclo de vida, testes por injeção e futura validação/logging ficam padronizados; Fastify passa a ser uma dependência de runtime das duas aplicações.
+- **Checkpoints afetados:** CP-03, CP-04 e CP-11.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                       | Responsável |
@@ -682,3 +737,5 @@ Usar uma entrada por decisão tomada:
 | 2026-08-27 | TypeScript aprovado; Effect e notificação direta registrados para discussão. | Codex       |
 | 2026-08-27 | CP-01 concluído com n8n removido e notificação direta aprovada. | Codex       |
 | 2026-08-27 | CP-02 concluído com ambiente local reproduzível e seis serviços saudáveis. | Codex       |
+| 2026-08-27 | CP-03 dividido em entregas menores; CP-03A concluído com falha controlável. | Codex       |
+| 2026-08-27 | CP-03A.1 concluído com Fastify nas duas bordas HTTP. | Codex       |

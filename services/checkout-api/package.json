@@ -1,5 +1,5 @@
 {
-  "name": "@grafana-ai/analyzer",
+  "name": "@grafana-ai/checkout-api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,7 +15,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "effect": "3.22.1",
     "fastify": "5.12.1"
   },
   "devDependencies": {
