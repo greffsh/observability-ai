@@ -339,6 +339,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 - [x] `checkout-api` emite logs JSON com serviço, ambiente, timestamp e nível; logs de requisição também incluem `reqId`.
 - [x] Operações saudável, degradada e mudança do modo de falha geram eventos semânticos distintos.
+- [x] Logging automático de requests desabilitado; sondagens de `/health` e `/metrics` não geram ruído no Loki.
 - [x] Alloy descobre somente o container da `checkout-api`, processa seus logs e os envia ao Loki.
 - [x] A consulta LogQL da falha retorna `checkout_failed` com código de erro e status HTTP.
 - [x] O datasource Loki foi confirmado saudável pela API do Grafana.
@@ -763,3 +764,4 @@ Usar uma entrada por decisão tomada:
 | 2026-08-27 | CP-03A.1 concluído com Fastify nas duas bordas HTTP. | Codex       |
 | 2026-08-27 | CP-03B concluído com logs estruturados coletados pelo Alloy e consultados no Loki. | Codex       |
 | 2026-08-27 | CP-03 e CP-03C concluídos com métricas coletadas e consultadas através do Grafana. | Codex       |
+| 2026-08-27 | Logs automáticos de requests removidos; eventos semânticos preservados. | Codex       |

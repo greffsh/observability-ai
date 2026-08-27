@@ -97,6 +97,8 @@ Para exibir somente a falha controlada:
 Os eventos semânticos atuais são `service_started`, `checkout_completed`,
 `checkout_failed` e `failure_mode_changed`. Todos contêm serviço, ambiente,
 timestamp e nível; eventos de requisição também contêm `reqId`.
+O logging automático de requests está desabilitado, portanto as sondagens
+periódicas em `/health` e `/metrics` não geram entradas no Loki.
 
 No ambiente local, o Alloy recebe acesso ao socket Docker para descobrir e ler
 os logs do container. Mesmo montado como somente leitura, esse socket concede

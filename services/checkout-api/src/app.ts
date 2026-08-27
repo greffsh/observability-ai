@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from "fastify"
+import Fastify, { LogController, type FastifyInstance } from "fastify"
 import { performance } from "node:perf_hooks"
 import { createMetrics } from "./metrics.js"
 
@@ -16,6 +16,7 @@ export const buildApp = (options: AppOptions = {}): FastifyInstance => {
   const serviceName = options.serviceName ?? "checkout-api"
   const environment = options.environment ?? "local"
   const app = Fastify({
+    logController: new LogController({ disableRequestLogging: true }),
     logger: options.logger === true
       ? {
           level: "info",
