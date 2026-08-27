@@ -6,6 +6,8 @@ services:
       context: ./services/checkout-api
     environment:
       PORT: 8081
+      SERVICE_NAME: checkout-api
+      ENVIRONMENT: local
     ports:
       - "${CHECKOUT_API_PORT:-8081}:8081"
     healthcheck:
@@ -118,6 +120,7 @@ services:
     volumes:
       - ./infra/alloy/config.alloy:/etc/alloy/config.alloy:ro
       - alloy-data:/var/lib/alloy/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       loki:
         condition: service_healthy

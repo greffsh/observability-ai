@@ -1,7 +1,8 @@
 # Grafana AI
 
 PoC local de RCA assistido por IA a partir de alertas do Grafana. Requisitos,
-decisões e progresso ficam em [CHECKPOINTS.md](CHECKPOINTS.md).
+decisões e progresso ficam em [CHECKPOINTS.md](CHECKPOINTS.md). Considerações
+para uma implantação futura ficam em [HOMOLOGACAO.md](HOMOLOGACAO.md).
 
 ## Pré-requisitos
 
@@ -74,6 +75,33 @@ Interrompa a falha e confirme a recuperação:
 curl --request DELETE http://localhost:8081/control/failure
 curl --fail http://localhost:8081/checkout
 ```
+
+## Logs da checkout-api
+
+A aplicação escreve logs JSON em `stdout`. O Alloy coleta somente os logs do
+serviço `checkout-api` e os encaminha ao Loki.
+
+Para consultar todos os logs no Grafana, abra **Explore**, selecione o datasource
+**Loki** e execute:
+
+```logql
+{service="checkout-api", environment="local"} | json
+```
+
+Para exibir somente a falha controlada:
+
+```logql
+{service="checkout-api", environment="local"} | json | event="checkout_failed"
+```
+
+Os eventos semânticos atuais são `service_started`, `checkout_completed`,
+`checkout_failed` e `failure_mode_changed`. Todos contêm serviço, ambiente,
+timestamp e nível; eventos de requisição também contêm `reqId`.
+
+No ambiente local, o Alloy recebe acesso ao socket Docker para descobrir e ler
+os logs do container. Mesmo montado como somente leitura, esse socket concede
+privilégios relevantes sobre o daemon e não deve ser exposto nem reproduzido em
+produção sem uma estratégia de isolamento apropriada.
 
 ## Encerrar
 

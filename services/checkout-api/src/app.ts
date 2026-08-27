@@ -4,8 +4,26 @@ type FailureState = {
   enabled: boolean
 }
 
-export const buildApp = (): FastifyInstance => {
-  const app = Fastify()
+type AppOptions = {
+  environment?: string
+  logger?: boolean
+  serviceName?: string
+}
+
+export const buildApp = (options: AppOptions = {}): FastifyInstance => {
+  const serviceName = options.serviceName ?? "checkout-api"
+  const environment = options.environment ?? "local"
+  const app = Fastify({
+    logger: options.logger === true
+      ? {
+          level: "info",
+          base: { service: serviceName, environment },
+          formatters: {
+            level: (label) => ({ level: label })
+          }
+        }
+      : false
+  })
   const failure: FailureState = { enabled: false }
 
   app.get("/health", async () => ({
@@ -15,24 +33,45 @@ export const buildApp = (): FastifyInstance => {
 
   app.get("/checkout", async (_request, reply) => {
     if (failure.enabled) {
+      reply.log.error({
+        event: "checkout_failed",
+        outcome: "failure",
+        error_code: "payment_provider_unavailable",
+        http_status: 503
+      }, "checkout failed")
+
       return reply.code(503).send({
         error: "payment_provider_unavailable",
-        service: "checkout-api"
+        service: serviceName
       })
     }
 
-    return reply.send({ status: "approved", service: "checkout-api" })
+    reply.log.info({
+      event: "checkout_completed",
+      outcome: "success",
+      http_status: 200
+    }, "checkout completed")
+
+    return reply.send({ status: "approved", service: serviceName })
   })
 
   app.get("/control/failure", async () => failure)
 
-  app.post("/control/failure", async () => {
+  app.post("/control/failure", async (request) => {
     failure.enabled = true
+    request.log.warn({
+      event: "failure_mode_changed",
+      failure_enabled: true
+    }, "failure mode enabled")
     return failure
   })
 
-  app.delete("/control/failure", async () => {
+  app.delete("/control/failure", async (request) => {
     failure.enabled = false
+    request.log.info({
+      event: "failure_mode_changed",
+      failure_enabled: false
+    }, "failure mode disabled")
     return failure
   })
 

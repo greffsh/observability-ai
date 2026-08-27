@@ -4,6 +4,10 @@
 >
 > Última atualização: 2026-08-27
 
+Considerações específicas para uma implantação futura são mantidas em
+`HOMOLOGACAO.md`; decisões que alterem a PoC continuam sendo registradas neste
+arquivo.
+
 ## Como manter este documento
 
 - Este arquivo é a fonte da verdade do projeto. Mudanças de escopo, decisões técnicas e conclusões de checkpoints devem ser registradas aqui.
@@ -331,9 +335,17 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 #### CP-03B — Logs estruturados no Loki
 
-**Estado:** `PENDENTE`
+**Estado:** `CONCLUÍDO`
 
-Adicionar identidade de serviço e ambiente aos logs e comprovar sua consulta no Loki/Grafana.
+- [x] `checkout-api` emite logs JSON com serviço, ambiente, timestamp e nível; logs de requisição também incluem `reqId`.
+- [x] Operações saudável, degradada e mudança do modo de falha geram eventos semânticos distintos.
+- [x] Alloy descobre somente o container da `checkout-api`, processa seus logs e os envia ao Loki.
+- [x] A consulta LogQL da falha retorna `checkout_failed` com código de erro e status HTTP.
+- [x] O datasource Loki foi confirmado saudável pela API do Grafana.
+
+**Evidências:** consulta `{service="checkout-api", environment="local"} | json | event="checkout_failed"` retornou exatamente o evento de falha com `error_code="payment_provider_unavailable"` e `http_status=503`; datasource Loki respondeu `status=OK` em 2026-08-27.
+
+**Limitação local:** o Alloy acessa `/var/run/docker.sock` para descoberta e leitura dos logs. A montagem é aceitável somente na PoC local e não representa a estratégia recomendada para produção.
 
 #### CP-03C — Métricas no Prometheus
 
@@ -660,6 +672,7 @@ Os cenários abaixo formam a linha de base aprovada no CP-00. Os valores exatos 
 | Excesso de notificações               | Canal ignorado pelos operadores          | Deduplicação, cooldown e política de roteamento                        |
 | n8n concentrar regras de negócio      | Baixa testabilidade e difícil evolução   | Manter contratos e regras centrais no Analyzer, caso n8n seja adotado  |
 | Classificação baseada apenas no texto | Severidade incompatível com impacto real | Combinar regras, metadados de serviço e sinais objetivos               |
+| Alloy com acesso ao socket Docker     | Comprometimento do coletor pode afetar o host | Restringir à PoC local; em produção usar coleta isolada e menor privilégio |
 
 ## Registro de decisões
 
@@ -739,3 +752,4 @@ Usar uma entrada por decisão tomada:
 | 2026-08-27 | CP-02 concluído com ambiente local reproduzível e seis serviços saudáveis. | Codex       |
 | 2026-08-27 | CP-03 dividido em entregas menores; CP-03A concluído com falha controlável. | Codex       |
 | 2026-08-27 | CP-03A.1 concluído com Fastify nas duas bordas HTTP. | Codex       |
+| 2026-08-27 | CP-03B concluído com logs estruturados coletados pelo Alloy e consultados no Loki. | Codex       |

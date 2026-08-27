@@ -3,6 +3,48 @@ logging {
   format = "logfmt"
 }
 
+discovery.docker "local" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "checkout_api_logs" {
+  targets = discovery.docker.local.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    regex         = "checkout-api"
+    action        = "keep"
+  }
+}
+
+loki.source.docker "checkout_api" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.checkout_api_logs.output
+  forward_to = [loki.process.checkout_api.receiver]
+}
+
+loki.process "checkout_api" {
+  stage.docker {}
+
+  stage.json {
+    expressions = {
+      environment = "environment",
+      level       = "level",
+      service     = "service",
+    }
+  }
+
+  stage.labels {
+    values = {
+      environment = "",
+      level       = "",
+      service     = "",
+    }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
+
 otelcol.receiver.otlp "application" {
   grpc {
     endpoint = "0.0.0.0:4317"
@@ -32,4 +74,3 @@ loki.write "local" {
     url = "http://loki:3100/loki/api/v1/push"
   }
 }
-
