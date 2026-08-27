@@ -1,0 +1,35 @@
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+otelcol.receiver.otlp "application" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+
+  output {
+    logs = [otelcol.processor.batch.application.input]
+  }
+}
+
+otelcol.processor.batch "application" {
+  output {
+    logs = [otelcol.exporter.loki.application.input]
+  }
+}
+
+otelcol.exporter.loki "application" {
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
