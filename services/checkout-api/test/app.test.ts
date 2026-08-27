@@ -40,4 +40,24 @@ describe("checkout-api", () => {
     const recovered = await app.inject({ method: "GET", url: "/checkout" })
     expect(recovered.statusCode).toBe(200)
   })
+
+  it("exposes bounded metrics for successful and failed checkouts", async () => {
+    await app.inject({ method: "GET", url: "/checkout" })
+    await app.inject({ method: "POST", url: "/control/failure" })
+    await app.inject({ method: "GET", url: "/checkout" })
+
+    const response = await app.inject({ method: "GET", url: "/metrics" })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.headers["content-type"]).toContain("text/plain")
+    expect(response.body).toContain(
+      'checkout_requests_total{outcome="success",http_status="200",service="checkout-api",environment="local"} 1'
+    )
+    expect(response.body).toContain(
+      'checkout_requests_total{outcome="failure",http_status="503",service="checkout-api",environment="local"} 1'
+    )
+    expect(response.body).toContain(
+      'checkout_failure_mode{service="checkout-api",environment="local"} 1'
+    )
+  })
 })

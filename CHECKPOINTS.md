@@ -290,7 +290,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 ### CP-03 — Produzir sinais controlados
 
-**Estado:** `EM ANDAMENTO`
+**Estado:** `CONCLUÍDO`
 
 **Objetivo:** criar uma fonte determinística de falhas para que os testes não dependam de incidentes reais.
 
@@ -304,8 +304,8 @@ checkout-api ── métricas ──> Prometheus ──┐
 **Critérios de aceite:**
 
 - [x] É possível iniciar e interromper a falha sob demanda.
-- [ ] Os sinais aparecem na fonte escolhida e podem ser consultados no Grafana.
-- [ ] Cada sinal contém dados suficientes para identificar serviço, ambiente e período.
+- [x] Os sinais aparecem na fonte escolhida e podem ser consultados no Grafana.
+- [x] Cada sinal contém dados suficientes para identificar serviço, ambiente e período.
 
 **Decisão técnica:** produzir logs e métricas no primeiro corte; traces ficam adiados até existir uma hipótese que justifique sua complexidade.
 
@@ -349,9 +349,18 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 #### CP-03C — Métricas no Prometheus
 
-**Estado:** `PENDENTE`
+**Estado:** `CONCLUÍDO`
 
-Expor métricas da operação de checkout, coletá-las no Prometheus e comprovar sua consulta no Grafana.
+- [x] `GET /metrics` expõe métricas no formato Prometheus.
+- [x] Contador separa operações por resultado e status HTTP com labels limitadas.
+- [x] Histograma registra duração da operação por resultado.
+- [x] Gauge informa se o modo de falha controlada está ativo.
+- [x] Prometheus coleta o target `checkout-api:8081` sem erro.
+- [x] A consulta PromQL retorna séries saudável e de falha através do datasource do Grafana.
+
+**Evidências:** três testes automatizados e typecheck concluídos; target `checkout-api` confirmado `up`; consulta `checkout_requests_total{service="checkout-api",environment="local"}` via proxy do Grafana retornou `outcome="success", http_status="200"` e `outcome="failure", http_status="503"` em 2026-08-27.
+
+**Dependência:** `@prometheus-io/client@0.16.1`; o pacote anterior `prom-client` não foi mantido porque passou a indicar oficialmente sua substituição.
 
 ---
 
@@ -753,3 +762,4 @@ Usar uma entrada por decisão tomada:
 | 2026-08-27 | CP-03 dividido em entregas menores; CP-03A concluído com falha controlável. | Codex       |
 | 2026-08-27 | CP-03A.1 concluído com Fastify nas duas bordas HTTP. | Codex       |
 | 2026-08-27 | CP-03B concluído com logs estruturados coletados pelo Alloy e consultados no Loki. | Codex       |
+| 2026-08-27 | CP-03 e CP-03C concluídos com métricas coletadas e consultadas através do Grafana. | Codex       |

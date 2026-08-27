@@ -103,6 +103,23 @@ os logs do container. Mesmo montado como somente leitura, esse socket concede
 privilégios relevantes sobre o daemon e não deve ser exposto nem reproduzido em
 produção sem uma estratégia de isolamento apropriada.
 
+## Métricas da checkout-api
+
+O Prometheus coleta `http://checkout-api:8081/metrics` a cada 15 segundos. No
+Grafana, abra **Explore**, selecione **Prometheus** e consulte:
+
+```promql
+checkout_requests_total{service="checkout-api", environment="local"}
+```
+
+Métricas disponíveis:
+
+- `checkout_requests_total`: operações por resultado e status HTTP;
+- `checkout_request_duration_seconds`: histograma de duração por resultado;
+- `checkout_failure_mode`: `1` durante a falha controlada e `0` fora dela.
+
+O endpoint bruto pode ser auditado em <http://localhost:8081/metrics>.
+
 ## Encerrar
 
 ```bash
