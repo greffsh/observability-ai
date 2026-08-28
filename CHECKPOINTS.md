@@ -2,7 +2,7 @@
 
 > Documento vivo de requisitos, decisões e progresso da PoC.
 >
-> Última atualização: 2026-08-27
+> Última atualização: 2026-08-28
 
 Considerações específicas para uma implantação futura são mantidas em
 `HOMOLOGACAO.md`; decisões que alterem a PoC continuam sendo registradas neste
@@ -83,6 +83,7 @@ Esses itens podem ser promovidos ao escopo após a validação do núcleo da PoC
 | RF-14 | Registrar modelo utilizado, consumo de tokens, duração e custo estimado da análise.              |   Desejável | PENDENTE |
 | RF-15 | Permitir reanalisar um incidente de forma controlada.                                            |   Desejável | PENDENTE |
 | RF-16 | Registrar feedback humano sobre severidade e utilidade do RCA.                                   |   Desejável | PENDENTE |
+| RF-17 | Consultar trechos da revisão implantada da codebase e preservá-los como evidências do RCA.         | Obrigatório | PENDENTE |
 
 ### Requisitos não funcionais
 
@@ -137,6 +138,7 @@ O formato definitivo e os nomes dos campos ainda serão decididos, mas essas inf
 | DT-10 | Política de retenção de payloads e análises | A definir                                                  | Antes de usar dados reais | PENDENTE |
 | DT-11 | Framework do Analyzer                       | Effect estável com adoção controlada                       | CP-04                     | DECIDIDO |
 | DT-12 | Framework HTTP                              | Fastify nas aplicações TypeScript                          | CP-03                     | DECIDIDO |
+| DT-13 | Acesso à codebase                           | Adapter read-only por API/CLI na revisão implantada        | CP-07                     | DECIDIDO |
 
 ## Inventário preliminar de contas e credenciais
 
@@ -151,6 +153,7 @@ O formato definitivo e os nomes dos campos ainda serão decididos, mas essas inf
 | PostgreSQL | Não | Usuário e senha próprios do Analyzer | Segredos locais gerados para a PoC e não versionados. |
 | Analyzer | Não | Segredo interno para chamadas recebidas | Credencial do provedor de IA é injetada somente no Analyzer. |
 | Provedor de IA externo | Sim, quando a chamada real for habilitada | Chave de API restrita ao projeto da PoC | Provedor e modelo ainda pendentes em DT-05 e DT-06. |
+| GitHub ou GitLab | Sim, quando repositórios privados forem consultados | GitHub App ou token de projeto/deploy com leitura mínima | Acesso limitado aos repositórios necessários e sem permissão de escrita. |
 | Canal de chat corporativo | Não no primeiro corte | Futuramente, webhook ou credencial de bot | O primeiro destino será um receptor local. |
 
 Os nomes dos segredos serão definidos no CP-02 e documentados em `.env.example` sem valores reais. Nenhuma chave administrativa de organização deve ser utilizada em tempo de execução quando uma chave restrita ao projeto for suficiente.
@@ -435,7 +438,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 ### CP-05 — Persistir incidentes e eventos
 
-**Estado:** `PENDENTE`
+**Estado:** `EM ANDAMENTO`
 
 **Objetivo:** manter histórico mínimo e separar o evento recebido do incidente correlacionado.
 
@@ -456,6 +459,53 @@ checkout-api ── métricas ──> Prometheus ──┐
 **Decisões necessárias:** DT-03 e, antes de dados reais, DT-10.
 
 **Evidências:** _a preencher_
+
+#### CP-05A — Aprovar o modelo mínimo de persistência
+
+**Estado:** `CONCLUÍDO`
+
+**Proposta para auditoria:**
+
+- `alert_events` será append-only e terá `event_id` único para impedir a persistência duplicada do mesmo evento do Grafana;
+- cada evento guardará os campos normalizados necessários para consulta, o `schema_version` e um snapshot JSONB sanitizado do contrato interno;
+- `incidents` terá identidade própria e ciclo de vida separado dos eventos que o compõem;
+- a associação entre evento e incidente será explícita por chave estrangeira e poderá ser preenchida pela correlação no CP-06;
+- timestamps do domínio (`started_at`, `ended_at` e `received_at`) serão separados dos timestamps de auditoria do banco;
+- o corpo bruto do webhook não será persistido por padrão; a decisão de retenção de payloads reais continua em DT-10;
+- o módulo de persistência apresentará uma interface pequena ao caso de uso de ingestão e esconderá transações, SQL e tratamento de duplicatas.
+
+**Tabelas propostas:**
+
+- `alert_events`: identidade externa, versão do schema, estado, serviço, ambiente, fingerprint, timestamps, labels, annotations e referência opcional ao incidente;
+- `incidents`: identidade interna, estado, serviço, ambiente, chave de correlação, primeira e última observação e resolução;
+- migrations versionadas em diretório próprio do Analyzer.
+
+**Pontos pendentes antes do CP-05B:**
+
+- [x] Persistir apenas o contrato normalizado/sanitizado, sem corpo bruto do webhook.
+- [x] Usar `@effect/sql-pg`, com SQL explícito e migrator do próprio pacote.
+- [x] Implementar a regra que associa eventos a incidentes somente no CP-06.
+
+**Evidência:** decisões aprovadas em 2026-08-28 antes do início do schema físico.
+
+#### CP-05B — Criar schema e migrations
+
+**Estado:** `CONCLUÍDO`
+
+- [x] Migration `0001_initial_persistence` cria `incidents` e `alert_events`.
+- [x] Constraints validam estados, ordem temporal, resolução e documentos JSON.
+- [x] `event_id` é único e os índices iniciais de consulta foram criados.
+- [x] Analyzer aplica migrations antes de iniciar a borda HTTP.
+- [x] Comando independente `pnpm migrate` permite aplicação manual.
+- [x] Reexecução não reaplica migrations concluídas.
+
+**Evidências:** migration aplicada no PostgreSQL 18.6 local; tabelas `incidents`, `alert_events` e `effect_sql_migrations` e sete índices confirmados; reinício registrou `Database schema is up to date`; 13 testes, typecheck e build aprovados em 2026-08-28.
+
+#### CP-05C — Persistir e consultar eventos
+
+**Estado:** `PENDENTE`
+
+Integrar a ingestão ao módulo de persistência, tratar reenvio idempotente e expor uma consulta mínima para auditoria.
 
 ---
 
@@ -488,7 +538,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Estado:** `PENDENTE`
 
-**Objetivo:** buscar contexto relacionado ao incidente sem depender ainda de IA.
+**Objetivo:** buscar contexto relacionado ao incidente, inclusive a revisão implantada da codebase, sem depender ainda de IA.
 
 **Entregáveis:**
 
@@ -496,11 +546,14 @@ checkout-api ── métricas ──> Prometheus ──┐
 - delimitação de janela temporal e serviço;
 - pacote estruturado de evidências;
 - limites de volume, timeout e falhas parciais.
+- mapeamento entre serviço, repositório e commit implantado;
+- adapter read-only controlado para GitHub ou GitLab, sem execução arbitrária de comandos pelo modelo.
 
 **Critérios de aceite:**
 
-- [ ] O pacote contém o alerta e contexto de ao menos logs e métricas, se disponíveis.
+- [ ] O pacote contém o alerta e contexto de logs, métricas e codebase, se disponíveis.
 - [ ] Cada evidência informa origem, intervalo e referência consultável.
+- [ ] Evidência de código informa repositório, commit, arquivo e linhas consultadas.
 - [ ] Uma fonte indisponível é registrada como limitação sem invalidar todo o pacote.
 - [ ] Conteúdo é sanitizado antes de ficar disponível para o modelo.
 
@@ -802,6 +855,26 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** interface pequena e determinística, erros de configuração visíveis e ausência de efeitos parciais; aliases de labels ficam fora do primeiro corte.
 - **Checkpoints afetados:** CP-04, CP-05 e CP-06.
 
+### DEC-007 — Persistência com Effect SQL
+
+- **Data:** 2026-08-28
+- **Estado:** aceita
+- **Contexto:** o histórico precisa ser reproduzível e auditável sem introduzir um ORM ou expandir excessivamente a superfície técnica da PoC.
+- **Decisão:** usar `@effect/sql-pg`, migrations TypeScript com SQL explícito e persistir somente o contrato interno sanitizado; o webhook bruto não será armazenado por padrão.
+- **Alternativas consideradas:** Drizzle; `pg` direto; persistência do corpo bruto.
+- **Consequências:** queries, transações e falhas integram-se ao Effect; o schema físico permanece visível; mudanças exigem migrations incrementais; correlação fica no CP-06.
+- **Checkpoints afetados:** CP-05 e CP-06.
+
+### DEC-008 — Codebase como fonte de evidência
+
+- **Data:** 2026-08-28
+- **Estado:** aceita
+- **Contexto:** um RCA útil pode precisar confrontar logs e métricas com o código realmente executado pelo serviço.
+- **Decisão:** consultar GitHub ou GitLab por um adapter read-only controlado, sempre que possível no commit implantado; o modelo não poderá executar comandos CLI arbitrários.
+- **Alternativas consideradas:** não consultar código; usar sempre a branch principal; entregar um shell irrestrito ao modelo.
+- **Consequências:** evidências poderão citar repositório, commit, arquivo e linhas; será necessário mapear serviço para repositório/revisão e fornecer uma credencial mínima de leitura.
+- **Checkpoints afetados:** CP-07, CP-09 e CP-10.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                       | Responsável |
@@ -820,3 +893,6 @@ Usar uma entrada por decisão tomada:
 | 2026-08-27 | CP-04 iniciado; CP-04A concluído com schemas e fixtures testados. | Codex       |
 | 2026-08-28 | CP-04B concluído com ingestão autenticada e normalização all-or-nothing. | Codex       |
 | 2026-08-28 | CP-04 e CP-04C concluídos com alerta real firing/resolved entregue pelo Grafana. | Codex       |
+| 2026-08-28 | CP-05 iniciado; CP-05A registra o modelo mínimo de persistência para auditoria. | Codex       |
+| 2026-08-28 | CP-05A e CP-05B concluídos com schema PostgreSQL e migrations idempotentes. | Codex       |
+| 2026-08-28 | Acesso read-only à revisão implantada da codebase adicionado ao CP-07. | Codex       |

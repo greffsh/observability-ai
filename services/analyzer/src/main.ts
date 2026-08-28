@@ -1,13 +1,23 @@
 import { Config, Effect, Redacted } from "effect"
 import { buildApp } from "./app.js"
+import { migrateDatabase } from "./database/migrate.js"
 
 const configuration = Config.all({
   port: Config.integer("PORT").pipe(Config.withDefault(8080)),
+  databaseUrl: Config.redacted("DATABASE_URL"),
   grafanaWebhookSecret: Config.redacted("GRAFANA_WEBHOOK_SECRET")
 })
 
 const main = Effect.gen(function* () {
-  const { port, grafanaWebhookSecret } = yield* configuration
+  const { databaseUrl, port, grafanaWebhookSecret } = yield* configuration
+
+  const appliedMigrations = yield* migrateDatabase(databaseUrl)
+  yield* Effect.logInfo(
+    appliedMigrations.length === 0
+      ? "Database schema is up to date"
+      : `Applied ${appliedMigrations.length} database migration(s)`
+  )
+
   const app = buildApp({
     grafanaWebhookSecret: Redacted.value(grafanaWebhookSecret),
     logger: true,

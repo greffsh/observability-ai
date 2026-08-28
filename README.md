@@ -180,3 +180,16 @@ curl --request DELETE http://localhost:8081/control/failure
 O Analyzer registra apenas os IDs dos eventos normalizados, não o corpo bruto
 do webhook. As configurações versionadas ficam em
 `infra/grafana/provisioning/alerting`.
+
+## Migrations do Analyzer
+
+O Analyzer aplica migrations do PostgreSQL antes de abrir a porta HTTP. Para
+executá-las manualmente fora do container:
+
+```bash
+cd services/analyzer
+DATABASE_URL=postgresql://usuario:senha@host:5432/banco pnpm migrate
+```
+
+As migrations ficam em `services/analyzer/src/migrations`. A tabela
+`effect_sql_migrations` registra quais versões já foram aplicadas.
