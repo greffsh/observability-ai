@@ -1,14 +1,18 @@
 import { timingSafeEqual } from "node:crypto"
-import { Effect, Either, Logger } from "effect"
+import { Effect, Either, Logger, Option } from "effect"
 import Fastify, {
   LogController,
   type FastifyBaseLogger,
-  type FastifyInstance
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest
 } from "fastify"
 import { normalizeGrafanaWebhook } from "./ingestion/normalize-grafana-webhook.js"
 import type { EffectRunner } from "./logging.js"
+import type { EventStore } from "./persistence/event-store.js"
 
 type AppOptions = {
+  eventStore: EventStore
   grafanaWebhookSecret: string
   logger?: FastifyBaseLogger
   now?: () => Date
@@ -44,6 +48,28 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
   const now = options.now ?? (() => new Date())
   const runEffect = options.runEffect ?? defaultRunEffect
 
+  const authenticate = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (isAuthorized(request.headers.authorization, options.grafanaWebhookSecret)) {
+      return
+    }
+
+    await runEffect(
+      Effect.logWarning("Analyzer authentication failed").pipe(
+        Effect.annotateLogs({
+          event: "analyzer_unauthorized",
+          reqId: request.id,
+          authorization_present: request.headers.authorization !== undefined,
+          authorization_scheme: request.headers.authorization?.split(" ", 1)[0] ?? null
+        })
+      )
+    )
+
+    return reply
+      .header("www-authenticate", "Bearer")
+      .code(401)
+      .send({ error: "unauthorized" })
+  }
+
   app.get("/health", async () => ({
     status: "ok",
     service: "analyzer"
@@ -51,25 +77,7 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
 
   app.post("/v1/webhooks/grafana", {
     bodyLimit: 256 * 1024,
-    onRequest: async (request, reply) => {
-      if (!isAuthorized(request.headers.authorization, options.grafanaWebhookSecret)) {
-        await runEffect(
-          Effect.logWarning("Grafana webhook authentication failed").pipe(
-            Effect.annotateLogs({
-              event: "grafana_webhook_unauthorized",
-              reqId: request.id,
-              authorization_present: request.headers.authorization !== undefined,
-              authorization_scheme: request.headers.authorization?.split(" ", 1)[0] ?? null
-            })
-          )
-        )
-
-        return reply
-          .header("www-authenticate", "Bearer")
-          .code(401)
-          .send({ error: "unauthorized" })
-      }
-    }
+    onRequest: authenticate
   }, async (request, reply) => {
     const result = await runEffect(
       Effect.either(normalizeGrafanaWebhook(request.body, now()))
@@ -91,8 +99,28 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
       })
     }
 
+    const persistence = await runEffect(
+      Effect.either(options.eventStore.record(result.right))
+    )
+
+    if (Either.isLeft(persistence)) {
+      await runEffect(
+        Effect.logError("Failed to persist Grafana webhook events").pipe(
+          Effect.annotateLogs({
+            event: "grafana_webhook_persistence_failed",
+            reqId: request.id,
+            operation: persistence.left.operation
+          })
+        )
+      )
+
+      return reply.code(503).send({ error: "persistence_unavailable" })
+    }
+
     const response = {
       accepted: result.right.length,
+      inserted: persistence.right.insertedEventIds.length,
+      duplicates: persistence.right.duplicateEventIds.length,
       eventIds: result.right.map((event) => event.eventId)
     }
 
@@ -102,12 +130,32 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
           event: "grafana_webhook_accepted",
           reqId: request.id,
           accepted: response.accepted,
+          inserted: response.inserted,
+          duplicates: response.duplicates,
           event_ids: response.eventIds
         })
       )
     )
 
     return reply.code(202).send(response)
+  })
+
+  app.get<{ Params: { eventId: string } }>("/v1/events/:eventId", {
+    onRequest: authenticate
+  }, async (request, reply) => {
+    const result = await runEffect(
+      Effect.either(options.eventStore.findByEventId(request.params.eventId))
+    )
+
+    if (Either.isLeft(result)) {
+      return reply.code(503).send({ error: "persistence_unavailable" })
+    }
+
+    if (Option.isNone(result.right)) {
+      return reply.code(404).send({ error: "event_not_found" })
+    }
+
+    return reply.code(200).send(result.right.value)
   })
 
   return app

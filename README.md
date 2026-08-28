@@ -156,6 +156,28 @@ curl --header "Authorization: Bearer change-me-webhook" \
   http://localhost:8080/v1/webhooks/grafana
 ```
 
+Uma entrega nova retorna `inserted: 1`; o reenvio do mesmo `eventId` retorna
+`duplicates: 1` e continua sendo reconhecido com HTTP `202`:
+
+```json
+{
+  "accepted": 1,
+  "inserted": 1,
+  "duplicates": 0,
+  "eventIds": ["manual-checkout-failure:firing:2026-08-28T09:00:00.000Z"]
+}
+```
+
+Consulte o evento persistido usando o mesmo Bearer:
+
+```bash
+curl --header "Authorization: Bearer change-me-webhook" \
+  "http://localhost:8080/v1/events/manual-checkout-failure:firing:2026-08-28T09:00:00.000Z"
+```
+
+O resultado inclui o UUID do banco, `incidentId` — ainda nulo até o CP-06 —,
+horário de persistência e o contrato interno normalizado.
+
 O valor acima é somente o padrão local. Um segredo real não deve ser escrito
 em comandos compartilhados, documentação ou logs.
 

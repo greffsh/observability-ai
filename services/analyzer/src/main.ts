@@ -1,8 +1,10 @@
 import { NodeRuntime } from "@effect/platform-node"
-import { Config, Effect, Redacted } from "effect"
+import { PgClient } from "@effect/sql-pg"
+import { Config, Effect, ManagedRuntime, Redacted } from "effect"
 import { buildApp } from "./app.js"
 import { migrateDatabase } from "./database/migrate.js"
 import { makeApplicationLogging } from "./logging.js"
+import { makePostgresEventStore } from "./persistence/postgres-event-store.js"
 
 const configuration = Config.all({
   port: Config.integer("PORT").pipe(Config.withDefault(8080)),
@@ -28,7 +30,19 @@ const main = Effect.gen(function* () {
       : `Applied ${appliedMigrations.length} database migration(s)`
   )
 
+  const databaseRuntime = ManagedRuntime.make(PgClient.layer({
+    url: databaseUrl,
+    applicationName: "grafana-ai-analyzer"
+  }))
+  yield* Effect.addFinalizer(() =>
+    Effect.promise(() => databaseRuntime.dispose())
+  )
+  const eventStore = yield* Effect.promise(() =>
+    databaseRuntime.runPromise(makePostgresEventStore)
+  )
+
   const app = buildApp({
+    eventStore,
     grafanaWebhookSecret: Redacted.value(grafanaWebhookSecret),
     logger: logging.logger,
     runEffect: logging.runPromise

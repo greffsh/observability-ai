@@ -438,7 +438,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 ### CP-05 — Persistir incidentes e eventos
 
-**Estado:** `EM ANDAMENTO`
+**Estado:** `CONCLUÍDO`
 
 **Objetivo:** manter histórico mínimo e separar o evento recebido do incidente correlacionado.
 
@@ -447,18 +447,18 @@ checkout-api ── métricas ──> Prometheus ──┐
 - modelo de dados inicial;
 - persistência de eventos brutos ou sanitizados, eventos normalizados e incidentes;
 - migrations ou mecanismo equivalente;
-- consulta simples por identificador do incidente.
+- consulta simples por identificador do evento; consulta por incidente será adicionada após a correlação no CP-06.
 
 **Critérios de aceite:**
 
-- [ ] Um evento recebido pode ser localizado pelo identificador de correlação.
-- [ ] O estado persistido sobrevive ao reinício do serviço.
-- [ ] Dados sensíveis definidos pela política não são persistidos indevidamente.
-- [ ] A evolução do schema é reproduzível.
+- [x] Um evento recebido pode ser localizado pelo `event_id`.
+- [x] O estado persistido sobrevive ao reinício do serviço.
+- [x] O corpo bruto não é persistido; somente o contrato interno sanitizado é armazenado.
+- [x] A evolução do schema é reproduzível.
 
 **Decisões necessárias:** DT-03 e, antes de dados reais, DT-10.
 
-**Evidências:** _a preencher_
+**Evidências:** CP-05A, CP-05B e CP-05C concluídos; evento real persistido, deduplicado, consultado e recuperado após reinício do Analyzer em 2026-08-28.
 
 #### CP-05A — Aprovar o modelo mínimo de persistência
 
@@ -503,9 +503,18 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 #### CP-05C — Persistir e consultar eventos
 
-**Estado:** `PENDENTE`
+**Estado:** `CONCLUÍDO`
 
-Integrar a ingestão ao módulo de persistência, tratar reenvio idempotente e expor uma consulta mínima para auditoria.
+- [x] Interface `EventStore` esconde transação, SQL e tratamento de duplicatas.
+- [x] Adapters PostgreSQL e memória exercitam o mesmo seam em produção e testes.
+- [x] Grupo normalizado é persistido em uma transação antes da resposta `202`.
+- [x] `ON CONFLICT (event_id) DO NOTHING` reconhece reenvios sem criar nova linha.
+- [x] Resposta informa quantidades `inserted` e `duplicates`.
+- [x] Falha de persistência retorna `503` para permitir nova tentativa do Grafana.
+- [x] `GET /v1/events/:eventId` autenticado permite auditoria e distingue `404` de indisponibilidade.
+- [x] `incident_id` permanece nulo até as regras de correlação do CP-06.
+
+**Evidências:** evento `cp05c-audit:firing:2026-08-28T17:30:00.000Z` retornou `inserted=1` na primeira entrega e `duplicates=1` no reenvio; uma única linha foi confirmada no PostgreSQL; consulta HTTP preservou o mesmo UUID e conteúdo após reiniciar o Analyzer; 19 testes, typecheck e build aprovados em 2026-08-28.
 
 ---
 
@@ -886,6 +895,16 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** domínio não depende de Pino, todos os logs usam JSON consistente e o buffer é descarregado no encerramento gracioso; uma queda abrupta ainda pode perder as últimas mensagens em memória.
 - **Checkpoints afetados:** CP-05, CP-09 e CP-13.
 
+### DEC-010 — Persistência de eventos atrás de um seam
+
+- **Data:** 2026-08-28
+- **Estado:** aceita
+- **Contexto:** o handler de ingestão precisa persistir e consultar eventos sem conhecer SQL, transações ou detalhes do PostgreSQL.
+- **Decisão:** definir a interface `EventStore` com `record` e `findByEventId`; usar adapter PostgreSQL em execução e adapter em memória nos testes; reconhecer conflito de `event_id` como duplicata aceita.
+- **Alternativas consideradas:** SQL diretamente no handler; mock de queries; transformar duplicata em erro HTTP.
+- **Consequências:** a interface é o test surface, persistência em grupo é transacional e o Grafana recebe `503` apenas quando a durabilidade não pode ser garantida.
+- **Checkpoints afetados:** CP-05 e CP-06.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                       | Responsável |
@@ -908,3 +927,4 @@ Usar uma entrada por decisão tomada:
 | 2026-08-28 | CP-05A e CP-05B concluídos com schema PostgreSQL e migrations idempotentes. | Codex       |
 | 2026-08-28 | Acesso read-only à revisão implantada da codebase adicionado ao CP-07. | Codex       |
 | 2026-08-28 | Logs do Analyzer padronizados em Effect com sink Pino assíncrono e flush gracioso. | Codex       |
+| 2026-08-28 | CP-05 e CP-05C concluídos com persistência, idempotência e consulta de eventos. | Codex       |
