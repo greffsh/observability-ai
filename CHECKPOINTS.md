@@ -367,7 +367,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 ### CP-04 — Receber e normalizar alertas
 
-**Estado:** `PENDENTE`
+**Estado:** `EM ANDAMENTO`
 
 **Objetivo:** receber um webhook do Grafana e convertê-lo em um evento interno estável.
 
@@ -383,11 +383,35 @@ checkout-api ── métricas ──> Prometheus ──┐
 - [ ] Um alerta de teste chega ao receptor.
 - [ ] O evento normalizado contém identidade do alerta, serviço, ambiente, estado e timestamps.
 - [ ] Payload inválido é rejeitado sem interromper o receptor.
-- [ ] Testes não dependem de uma instância ativa do Grafana.
+- [x] Testes não dependem de uma instância ativa do Grafana.
 
 **Decisões necessárias:** DT-01 e DT-02.
 
-**Evidências:** _a preencher_
+#### CP-04A — Definir contratos e fixtures
+
+**Estado:** `CONCLUÍDO`
+
+- [x] Schema do webhook do Grafana cobre grupo, alertas, labels, annotations, estado, links e timestamps.
+- [x] Schema interno `schemaVersion=1` exige identidade do evento e alerta, serviço, ambiente, estado e timestamps.
+- [x] Timestamps externos são decodificados de strings; timestamps internos são instâncias válidas de `Date`.
+- [x] Fixture representativa de alerta firing é versionada e anonimizada.
+- [x] Payload com estado não suportado e evento interno sem serviço são rejeitados em testes.
+
+**Evidências:** cinco testes do Analyzer e typecheck concluídos em 2026-08-27, sem conexão com Grafana ativo.
+
+**Limitação:** a fixture segue o formato documentado e será confirmada ou ajustada com um payload emitido pela instância local no CP-04C; ainda não deve ser descrita como captura real.
+
+#### CP-04B — Implementar ingestão e normalização
+
+**Estado:** `PENDENTE`
+
+Criar endpoint autenticado, decodificar o webhook e produzir um evento interno por alerta do grupo.
+
+#### CP-04C — Integrar com Grafana local
+
+**Estado:** `PENDENTE`
+
+Configurar contact point, enviar alerta de teste e substituir ou confirmar a fixture com o payload observado.
 
 ---
 
@@ -765,3 +789,4 @@ Usar uma entrada por decisão tomada:
 | 2026-08-27 | CP-03B concluído com logs estruturados coletados pelo Alloy e consultados no Loki. | Codex       |
 | 2026-08-27 | CP-03 e CP-03C concluídos com métricas coletadas e consultadas através do Grafana. | Codex       |
 | 2026-08-27 | Logs automáticos de requests removidos; eventos semânticos preservados. | Codex       |
+| 2026-08-27 | CP-04 iniciado; CP-04A concluído com schemas e fixtures testados. | Codex       |
