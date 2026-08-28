@@ -1,48 +1,59 @@
 export const firingWebhookFixture = {
-  receiver: "grafana-ai-analyzer",
+  receiver: "Analyzer webhook bearer",
   status: "firing",
   alerts: [
     {
       status: "firing",
       labels: {
-        alertname: "CheckoutFailureRateHigh",
-        service: "checkout-api",
+        alertname: "Checkout failure mode enabled",
         environment: "local",
+        grafana_folder: "Grafana AI PoC",
+        service: "checkout-api",
         severity: "warning"
       },
       annotations: {
-        summary: "Checkout failure rate is above the configured threshold"
+        description: "The deterministic failure mode for checkout-api is active.",
+        summary: "Checkout failure mode is enabled"
       },
-      startsAt: "2026-08-27T15:00:00Z",
+      startsAt: "2026-08-28T13:21:00Z",
       endsAt: "0001-01-01T00:00:00Z",
-      generatorURL: "http://grafana:3000/alerting/grafana/example/view",
+      generatorURL: "http://localhost:3000/alerting/grafana/checkout-failure-mode-enabled/view?orgId=1",
       fingerprint: "fixture-checkout-failure",
-      silenceURL: "http://grafana:3000/alerting/silence/new",
-      dashboardURL: "http://grafana:3000/d/checkout/checkout-api",
-      panelURL: "http://grafana:3000/d/checkout/checkout-api?viewPanel=1",
+      silenceURL: "http://localhost:3000/alerting/silence/new?alertmanager=grafana",
+      dashboardURL: "",
+      panelURL: "",
+      ruleUID: "checkout-failure-mode-enabled",
       values: {
-        failure_rate: 0.5
-      }
+        B0: 1
+      },
+      valueString: "[ var='B0' metric='checkout_failure_mode' value=1 ]",
+      orgId: 1
     }
   ],
   groupLabels: {
-    alertname: "CheckoutFailureRateHigh"
+    alertname: "Checkout failure mode enabled",
+    grafana_folder: "Grafana AI PoC"
   },
   commonLabels: {
+    alertname: "Checkout failure mode enabled",
     service: "checkout-api",
-    environment: "local"
+    environment: "local",
+    grafana_folder: "Grafana AI PoC",
+    severity: "warning"
   },
   commonAnnotations: {
-    summary: "Checkout failure rate is above the configured threshold"
+    description: "The deterministic failure mode for checkout-api is active.",
+    summary: "Checkout failure mode is enabled"
   },
-  externalURL: "http://grafana:3000/",
+  externalURL: "http://localhost:3000/",
+  appVersion: "13.2.0",
   version: "1",
-  groupKey: "{}:{alertname=\"CheckoutFailureRateHigh\"}",
+  groupKey: "{}:{alertname=\"Checkout failure mode enabled\", grafana_folder=\"Grafana AI PoC\"}",
   truncatedAlerts: 0,
   orgId: 1,
-  title: "[FIRING:1] CheckoutFailureRateHigh",
+  title: "[FIRING:1] Checkout failure mode enabled Grafana AI PoC",
   state: "alerting",
-  message: "Checkout failure rate is above the configured threshold"
+  message: "Synthetic checkout failure alert"
 } as const
 
 export const resolvedWebhookFixture = {
@@ -52,9 +63,9 @@ export const resolvedWebhookFixture = {
     {
       ...firingWebhookFixture.alerts[0],
       status: "resolved",
-      endsAt: "2026-08-27T15:10:00Z"
+      endsAt: "2026-08-28T13:31:00Z"
     }
   ],
-  title: "[RESOLVED] CheckoutFailureRateHigh",
+  title: "[RESOLVED] Checkout failure mode enabled",
   state: "ok"
 } as const

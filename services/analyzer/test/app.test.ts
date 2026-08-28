@@ -7,7 +7,7 @@ let app: ReturnType<typeof buildApp>
 beforeEach(() => {
   app = buildApp({
     grafanaWebhookSecret: "test-webhook-secret",
-    now: () => new Date("2026-08-27T15:00:05Z")
+    now: () => new Date("2026-08-28T13:21:05Z")
   })
 })
 
@@ -50,7 +50,7 @@ describe("Analyzer HTTP API", () => {
     expect(response.json()).toEqual({
       accepted: 1,
       eventIds: [
-        "fixture-checkout-failure:firing:2026-08-27T15:00:00.000Z"
+        "fixture-checkout-failure:firing:2026-08-28T13:21:00.000Z"
       ]
     })
   })
@@ -73,7 +73,7 @@ describe("Analyzer HTTP API", () => {
       alerts: [{
         ...firingWebhookFixture.alerts[0],
         labels: {
-          alertname: "CheckoutFailureRateHigh",
+          alertname: "Checkout failure mode enabled",
           environment: "local"
         }
       }]

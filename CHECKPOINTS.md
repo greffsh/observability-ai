@@ -367,7 +367,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 ### CP-04 — Receber e normalizar alertas
 
-**Estado:** `EM ANDAMENTO`
+**Estado:** `CONCLUÍDO`
 
 **Objetivo:** receber um webhook do Grafana e convertê-lo em um evento interno estável.
 
@@ -380,7 +380,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Critérios de aceite:**
 
-- [ ] Um alerta de teste chega ao receptor.
+- [x] Um alerta de teste chega ao receptor.
 - [x] O evento normalizado contém identidade do alerta, serviço, ambiente, estado e timestamps.
 - [x] Payload inválido é rejeitado sem interromper o receptor.
 - [x] Testes não dependem de uma instância ativa do Grafana.
@@ -399,7 +399,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Evidências:** cinco testes do Analyzer e typecheck concluídos em 2026-08-27, sem conexão com Grafana ativo.
 
-**Limitação:** a fixture segue o formato documentado e será confirmada ou ajustada com um payload emitido pela instância local no CP-04C; ainda não deve ser descrita como captura real.
+**Evidência adicional:** a fixture foi ajustada no CP-04C a partir de um payload emitido pelo Grafana 13.2.0 local, com identificadores e URLs anonimizados.
 
 #### CP-04B — Implementar ingestão e normalização
 
@@ -418,9 +418,18 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 #### CP-04C — Integrar com Grafana local
 
-**Estado:** `PENDENTE`
+**Estado:** `CONCLUÍDO`
 
-Configurar contact point, enviar alerta de teste e substituir ou confirmar a fixture com o payload observado.
+- [x] Contact point autenticado com Bearer é provisionado como código.
+- [x] Notification policy encaminha alertas ao Analyzer.
+- [x] Regra provisionada observa o gauge `checkout_failure_mode`.
+- [x] Transições reais `firing` e `resolved` são aceitas pelo Analyzer.
+- [x] Fixture foi atualizada com um payload real e anonimizado do Grafana 13.2.0.
+- [x] Ambiente foi restaurado com a falha desativada e a regra em estado `Normal`.
+
+**Evidências:** o fluxo local entregou os eventos `e06c9aa7ab2e4109:firing:2026-08-28T13:18:40.000Z` e `e06c9aa7ab2e4109:resolved:2026-08-28T13:10:00.000Z`; 13 testes e typecheck do Analyzer passaram; os sete containers ficaram saudáveis em 2026-08-28.
+
+**Nota de implementação:** nas configurações provisionadas por arquivo, `authorization_credentials` fica em `settings`. Um novo UID de contact point foi usado após a correção para que o Grafana aplicasse a credencial e mantivesse seu valor redigido na API.
 
 ---
 
@@ -810,3 +819,4 @@ Usar uma entrada por decisão tomada:
 | 2026-08-27 | Logs automáticos de requests removidos; eventos semânticos preservados. | Codex       |
 | 2026-08-27 | CP-04 iniciado; CP-04A concluído com schemas e fixtures testados. | Codex       |
 | 2026-08-28 | CP-04B concluído com ingestão autenticada e normalização all-or-nothing. | Codex       |
+| 2026-08-28 | CP-04 e CP-04C concluídos com alerta real firing/resolved entregue pelo Grafana. | Codex       |

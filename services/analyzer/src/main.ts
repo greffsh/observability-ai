@@ -9,7 +9,10 @@ const configuration = Config.all({
 const main = Effect.gen(function* () {
   const { port, grafanaWebhookSecret } = yield* configuration
   const app = buildApp({
-    grafanaWebhookSecret: Redacted.value(grafanaWebhookSecret)
+    grafanaWebhookSecret: Redacted.value(grafanaWebhookSecret),
+    logger: true,
+    serviceName: process.env.SERVICE_NAME ?? "analyzer",
+    environment: process.env.ENVIRONMENT ?? "local"
   })
 
   yield* Effect.tryPromise({

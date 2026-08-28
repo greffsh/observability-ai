@@ -13,7 +13,7 @@ describe("Grafana webhook contract", () => {
     expect(decoded.status).toBe("firing")
     expect(decoded.alerts).toHaveLength(1)
     expect(decoded.alerts[0]?.startsAt).toEqual(
-      new Date("2026-08-27T15:00:00Z")
+      new Date("2026-08-28T13:21:00Z")
     )
   })
 
@@ -36,7 +36,7 @@ describe("internal alert event contract", () => {
       source: "grafana",
       eventId: "fixture-checkout-failure:firing:2026-08-27T15:00:00.000Z",
       alertFingerprint: "fixture-checkout-failure",
-      alertName: "CheckoutFailureRateHigh",
+      alertName: "Checkout failure mode enabled",
       service: "checkout-api",
       environment: "local",
       state: "firing",

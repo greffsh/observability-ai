@@ -158,3 +158,25 @@ curl --header "Authorization: Bearer change-me-webhook" \
 
 O valor acima é somente o padrão local. Um segredo real não deve ser escrito
 em comandos compartilhados, documentação ou logs.
+
+## Auditar o alerta local
+
+O Grafana provisiona uma regra que dispara quando `checkout_failure_mode` vale
+`1` e encaminha as transições ao Analyzer. Para exercitar o fluxo completo:
+
+```bash
+curl --request POST http://localhost:8081/control/failure
+docker compose logs --follow analyzer
+```
+
+A coleta do Prometheus ocorre a cada 15 segundos e a avaliação da regra a cada
+10 segundos, então a notificação pode levar alguns segundos. Após observar o
+evento `grafana_webhook_accepted`, restaure o estado saudável:
+
+```bash
+curl --request DELETE http://localhost:8081/control/failure
+```
+
+O Analyzer registra apenas os IDs dos eventos normalizados, não o corpo bruto
+do webhook. As configurações versionadas ficam em
+`infra/grafana/provisioning/alerting`.

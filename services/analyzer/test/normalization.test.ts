@@ -6,7 +6,7 @@ import {
   resolvedWebhookFixture
 } from "./fixtures/grafana-webhook.ts"
 
-const receivedAt = new Date("2026-08-27T15:00:05Z")
+const receivedAt = new Date("2026-08-28T13:21:05Z")
 
 describe("Grafana webhook normalization", () => {
   it("normalizes a firing alert and removes the sentinel end timestamp", async () => {
@@ -18,8 +18,8 @@ describe("Grafana webhook normalization", () => {
     expect(events[0]).toMatchObject({
       schemaVersion: 1,
       source: "grafana",
-      eventId: "fixture-checkout-failure:firing:2026-08-27T15:00:00.000Z",
-      alertName: "CheckoutFailureRateHigh",
+      eventId: "fixture-checkout-failure:firing:2026-08-28T13:21:00.000Z",
+      alertName: "Checkout failure mode enabled",
       service: "checkout-api",
       environment: "local",
       state: "firing",
@@ -34,7 +34,7 @@ describe("Grafana webhook normalization", () => {
     )
 
     expect(events[0]?.state).toBe("resolved")
-    expect(events[0]?.endedAt).toEqual(new Date("2026-08-27T15:10:00Z"))
+    expect(events[0]?.endedAt).toEqual(new Date("2026-08-28T13:31:00Z"))
   })
 
   it("rejects the whole group when one alert lacks a required label", async () => {
@@ -46,7 +46,7 @@ describe("Grafana webhook normalization", () => {
           ...firingWebhookFixture.alerts[0],
           fingerprint: "missing-service",
           labels: {
-            alertname: "CheckoutFailureRateHigh",
+            alertname: "Checkout failure mode enabled",
             environment: "local"
           }
         }
