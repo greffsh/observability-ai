@@ -193,3 +193,20 @@ DATABASE_URL=postgresql://usuario:senha@host:5432/banco pnpm migrate
 
 As migrations ficam em `services/analyzer/src/migrations`. A tabela
 `effect_sql_migrations` registra quais versões já foram aplicadas.
+
+## Logs do Analyzer
+
+Os casos de uso emitem logs com `Effect.log*`. Um adapter preserva níveis,
+annotations, spans, causas e identidade da fiber e encaminha tudo para uma
+única instância Pino com destino assíncrono em `stdout`. O Fastify reutiliza a
+mesma instância apenas para seus logs internos.
+
+```bash
+docker compose logs --follow analyzer
+```
+
+O logging automático de requests está desabilitado. Eventos semânticos, como
+`grafana_webhook_accepted`, carregam `reqId` e os demais campos no mesmo objeto
+JSON. No encerramento gracioso, o Analyzer fecha o servidor e descarrega o
+buffer do Pino; uma interrupção abrupta como `SIGKILL` ainda pode perder as
+últimas mensagens em memória.

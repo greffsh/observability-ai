@@ -499,7 +499,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 - [x] Comando independente `pnpm migrate` permite aplicação manual.
 - [x] Reexecução não reaplica migrations concluídas.
 
-**Evidências:** migration aplicada no PostgreSQL 18.6 local; tabelas `incidents`, `alert_events` e `effect_sql_migrations` e sete índices confirmados; reinício registrou `Database schema is up to date`; 13 testes, typecheck e build aprovados em 2026-08-28.
+**Evidências:** migration aplicada no PostgreSQL 18.6 local; tabelas `incidents`, `alert_events` e `effect_sql_migrations` e sete índices confirmados; reinício registrou `Database schema is up to date`; 15 testes, typecheck e build aprovados em 2026-08-28.
 
 #### CP-05C — Persistir e consultar eventos
 
@@ -778,6 +778,7 @@ Os cenários abaixo formam a linha de base aprovada no CP-00. Os valores exatos 
 | n8n concentrar regras de negócio      | Baixa testabilidade e difícil evolução   | Manter contratos e regras centrais no Analyzer, caso n8n seja adotado  |
 | Classificação baseada apenas no texto | Severidade incompatível com impacto real | Combinar regras, metadados de serviço e sinais objetivos               |
 | Alloy com acesso ao socket Docker     | Comprometimento do coletor pode afetar o host | Restringir à PoC local; em produção usar coleta isolada e menor privilégio |
+| Buffer assíncrono de logs perdido em queda abrupta | Últimas linhas podem não chegar ao coletor | Flush no encerramento gracioso; aceitar a limitação para `SIGKILL` ou falha do host |
 
 ## Registro de decisões
 
@@ -875,6 +876,16 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** evidências poderão citar repositório, commit, arquivo e linhas; será necessário mapear serviço para repositório/revisão e fornecer uma credencial mínima de leitura.
 - **Checkpoints afetados:** CP-07, CP-09 e CP-10.
 
+### DEC-009 — Effect como interface e Pino como sink de logs
+
+- **Data:** 2026-08-28
+- **Estado:** aceita
+- **Contexto:** o Analyzer precisa propagar contexto pelas fibers sem realizar serialização e escrita síncrona no caminho das requisições.
+- **Decisão:** casos de uso emitem por `Effect.log*`; um adapter traduz níveis, annotations, spans e causas para uma única instância Pino com destino assíncrono em `stdout`; Fastify reutiliza a mesma instância para logs internos.
+- **Alternativas consideradas:** logger JSON padrão do Effect sobre `console.log`; `Logger.batched`; Pino chamado diretamente pelos casos de uso.
+- **Consequências:** domínio não depende de Pino, todos os logs usam JSON consistente e o buffer é descarregado no encerramento gracioso; uma queda abrupta ainda pode perder as últimas mensagens em memória.
+- **Checkpoints afetados:** CP-05, CP-09 e CP-13.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                       | Responsável |
@@ -896,3 +907,4 @@ Usar uma entrada por decisão tomada:
 | 2026-08-28 | CP-05 iniciado; CP-05A registra o modelo mínimo de persistência para auditoria. | Codex       |
 | 2026-08-28 | CP-05A e CP-05B concluídos com schema PostgreSQL e migrations idempotentes. | Codex       |
 | 2026-08-28 | Acesso read-only à revisão implantada da codebase adicionado ao CP-07. | Codex       |
+| 2026-08-28 | Logs do Analyzer padronizados em Effect com sink Pino assíncrono e flush gracioso. | Codex       |

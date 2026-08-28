@@ -1,15 +1,24 @@
 import { timingSafeEqual } from "node:crypto"
-import { Effect, Either } from "effect"
-import Fastify, { LogController, type FastifyInstance } from "fastify"
+import { Effect, Either, Logger } from "effect"
+import Fastify, {
+  LogController,
+  type FastifyBaseLogger,
+  type FastifyInstance
+} from "fastify"
 import { normalizeGrafanaWebhook } from "./ingestion/normalize-grafana-webhook.js"
+import type { EffectRunner } from "./logging.js"
 
 type AppOptions = {
-  environment?: string
   grafanaWebhookSecret: string
-  logger?: boolean
+  logger?: FastifyBaseLogger
   now?: () => Date
-  serviceName?: string
+  runEffect?: EffectRunner
 }
+
+const SilentLogger = Logger.replace(Logger.defaultLogger, Logger.none)
+
+const defaultRunEffect: EffectRunner = (effect) =>
+  Effect.runPromise(effect.pipe(Effect.provide(SilentLogger)))
 
 const isAuthorized = (authorization: string | undefined, secret: string): boolean => {
   const match = authorization?.match(/^Bearer (.+)$/i)
@@ -28,22 +37,12 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
     throw new Error("GRAFANA_WEBHOOK_SECRET must not be empty")
   }
 
-  const app = Fastify({
-    logController: new LogController({ disableRequestLogging: true }),
-    logger: options.logger === true
-      ? {
-          level: "info",
-          base: {
-            service: options.serviceName ?? "analyzer",
-            environment: options.environment ?? "local"
-          },
-          formatters: {
-            level: (label) => ({ level: label })
-          }
-        }
-      : false
-  })
+  const logController = new LogController({ disableRequestLogging: true })
+  const app = options.logger === undefined
+    ? Fastify({ logger: false, logController })
+    : Fastify({ loggerInstance: options.logger, logController })
   const now = options.now ?? (() => new Date())
+  const runEffect = options.runEffect ?? defaultRunEffect
 
   app.get("/health", async () => ({
     status: "ok",
@@ -54,11 +53,16 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
     bodyLimit: 256 * 1024,
     onRequest: async (request, reply) => {
       if (!isAuthorized(request.headers.authorization, options.grafanaWebhookSecret)) {
-        request.log.warn({
-          event: "grafana_webhook_unauthorized",
-          authorization_present: request.headers.authorization !== undefined,
-          authorization_scheme: request.headers.authorization?.split(" ", 1)[0] ?? null
-        }, "Grafana webhook authentication failed")
+        await runEffect(
+          Effect.logWarning("Grafana webhook authentication failed").pipe(
+            Effect.annotateLogs({
+              event: "grafana_webhook_unauthorized",
+              reqId: request.id,
+              authorization_present: request.headers.authorization !== undefined,
+              authorization_scheme: request.headers.authorization?.split(" ", 1)[0] ?? null
+            })
+          )
+        )
 
         return reply
           .header("www-authenticate", "Bearer")
@@ -67,7 +71,7 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
       }
     }
   }, async (request, reply) => {
-    const result = await Effect.runPromise(
+    const result = await runEffect(
       Effect.either(normalizeGrafanaWebhook(request.body, now()))
     )
 
@@ -92,11 +96,16 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
       eventIds: result.right.map((event) => event.eventId)
     }
 
-    request.log.info({
-      event: "grafana_webhook_accepted",
-      accepted: response.accepted,
-      event_ids: response.eventIds
-    }, "Grafana webhook accepted")
+    await runEffect(
+      Effect.logInfo("Grafana webhook accepted").pipe(
+        Effect.annotateLogs({
+          event: "grafana_webhook_accepted",
+          reqId: request.id,
+          accepted: response.accepted,
+          event_ids: response.eventIds
+        })
+      )
+    )
 
     return reply.code(202).send(response)
   })
