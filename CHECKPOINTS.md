@@ -381,11 +381,11 @@ checkout-api ── métricas ──> Prometheus ──┐
 **Critérios de aceite:**
 
 - [ ] Um alerta de teste chega ao receptor.
-- [ ] O evento normalizado contém identidade do alerta, serviço, ambiente, estado e timestamps.
-- [ ] Payload inválido é rejeitado sem interromper o receptor.
+- [x] O evento normalizado contém identidade do alerta, serviço, ambiente, estado e timestamps.
+- [x] Payload inválido é rejeitado sem interromper o receptor.
 - [x] Testes não dependem de uma instância ativa do Grafana.
 
-**Decisões necessárias:** DT-01 e DT-02.
+**Decisões aplicadas:** endpoint direto no Analyzer, labels obrigatórias `alertname`, `service` e `environment`, processamento all-or-nothing e autenticação Bearer com segredo compartilhado.
 
 #### CP-04A — Definir contratos e fixtures
 
@@ -403,9 +403,18 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 #### CP-04B — Implementar ingestão e normalização
 
-**Estado:** `PENDENTE`
+**Estado:** `CONCLUÍDO`
 
-Criar endpoint autenticado, decodificar o webhook e produzir um evento interno por alerta do grupo.
+- [x] `POST /v1/webhooks/grafana` exige Bearer e limita o corpo a 256 KiB.
+- [x] Comparação do segredo usa tempo constante e o valor não é registrado.
+- [x] Adapter externo exige apenas campos necessários e tolera metadados opcionais do Grafana.
+- [x] Módulo de normalização produz um `AlertEvent` por alerta, sem efeitos colaterais.
+- [x] Grupo inteiro é rejeitado quando qualquer alerta é semanticamente inválido.
+- [x] Respostas distinguem autenticação, formato, semântica e limite de tamanho.
+
+**Evidências:** 13 testes e typecheck aprovados; container saudável; chamadas externas retornaram `401` sem autenticação, `202` com um `eventId` determinístico e `422` para ausência de `labels.service` em 2026-08-28.
+
+**Limitação:** eventos normalizados ainda não são persistidos nem encaminhados. A resposta `202` comprova ingestão e normalização nesta fase; durabilidade será implementada no CP-05.
 
 #### CP-04C — Integrar com Grafana local
 
@@ -774,6 +783,16 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** roteamento, ciclo de vida, testes por injeção e futura validação/logging ficam padronizados; Fastify passa a ser uma dependência de runtime das duas aplicações.
 - **Checkpoints afetados:** CP-03, CP-04 e CP-11.
 
+### DEC-006 — Contrato de ingestão do Grafana
+
+- **Data:** 2026-08-28
+- **Estado:** aceita
+- **Contexto:** o CP-04B precisava definir autenticação, identidade mínima e comportamento para grupos parcialmente inválidos.
+- **Decisão:** usar Bearer compartilhado; exigir as labels `alertname`, `service` e `environment`; normalizar um evento por alerta; rejeitar o grupo inteiro se qualquer item for inválido.
+- **Alternativas consideradas:** Basic Auth; labels configuráveis já na PoC; aceitação parcial de grupos.
+- **Consequências:** interface pequena e determinística, erros de configuração visíveis e ausência de efeitos parciais; aliases de labels ficam fora do primeiro corte.
+- **Checkpoints afetados:** CP-04, CP-05 e CP-06.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                       | Responsável |
@@ -790,3 +809,4 @@ Usar uma entrada por decisão tomada:
 | 2026-08-27 | CP-03 e CP-03C concluídos com métricas coletadas e consultadas através do Grafana. | Codex       |
 | 2026-08-27 | Logs automáticos de requests removidos; eventos semânticos preservados. | Codex       |
 | 2026-08-27 | CP-04 iniciado; CP-04A concluído com schemas e fixtures testados. | Codex       |
+| 2026-08-28 | CP-04B concluído com ingestão autenticada e normalização all-or-nothing. | Codex       |

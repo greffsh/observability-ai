@@ -28,6 +28,7 @@ services:
     environment:
       PORT: 8080
       DATABASE_URL: postgresql://${POSTGRES_USER:-analyzer}:${POSTGRES_PASSWORD:-change-me-postgres}@postgres:5432/${POSTGRES_DB:-grafana_ai}
+      GRAFANA_WEBHOOK_SECRET: ${GRAFANA_WEBHOOK_SECRET:-change-me-webhook}
     ports:
       - "${ANALYZER_PORT:-8080}:8080"
     depends_on:

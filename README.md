@@ -143,3 +143,18 @@ pnpm dev
 
 Para desenvolver a aplicação demonstrativa, use os mesmos comandos em
 `services/checkout-api`; sua porta padrão é `8081`.
+
+## Webhook do Analyzer
+
+O Analyzer recebe webhooks em `POST /v1/webhooks/grafana`. A requisição deve
+usar `Content-Type: application/json` e autenticação Bearer com o valor de
+`GRAFANA_WEBHOOK_SECRET`.
+
+```bash
+curl --header "Authorization: Bearer change-me-webhook" \
+  --json '{"status":"firing","alerts":[{"status":"firing","labels":{"alertname":"CheckoutFailureRateHigh","service":"checkout-api","environment":"local"},"startsAt":"2026-08-28T09:00:00Z","endsAt":"0001-01-01T00:00:00Z","fingerprint":"manual-checkout-failure"}]}' \
+  http://localhost:8080/v1/webhooks/grafana
+```
+
+O valor acima é somente o padrão local. Um segredo real não deve ser escrito
+em comandos compartilhados, documentação ou logs.

@@ -44,3 +44,17 @@ export const firingWebhookFixture = {
   state: "alerting",
   message: "Checkout failure rate is above the configured threshold"
 } as const
+
+export const resolvedWebhookFixture = {
+  ...firingWebhookFixture,
+  status: "resolved",
+  alerts: [
+    {
+      ...firingWebhookFixture.alerts[0],
+      status: "resolved",
+      endsAt: "2026-08-27T15:10:00Z"
+    }
+  ],
+  title: "[RESOLVED] CheckoutFailureRateHigh",
+  state: "ok"
+} as const

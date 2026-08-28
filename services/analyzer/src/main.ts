@@ -1,13 +1,16 @@
-import { Config, Effect } from "effect"
+import { Config, Effect, Redacted } from "effect"
 import { buildApp } from "./app.js"
 
 const configuration = Config.all({
-  port: Config.integer("PORT").pipe(Config.withDefault(8080))
+  port: Config.integer("PORT").pipe(Config.withDefault(8080)),
+  grafanaWebhookSecret: Config.redacted("GRAFANA_WEBHOOK_SECRET")
 })
 
 const main = Effect.gen(function* () {
-  const { port } = yield* configuration
-  const app = buildApp()
+  const { port, grafanaWebhookSecret } = yield* configuration
+  const app = buildApp({
+    grafanaWebhookSecret: Redacted.value(grafanaWebhookSecret)
+  })
 
   yield* Effect.tryPromise({
     try: () => app.listen({ port, host: "0.0.0.0" }),
