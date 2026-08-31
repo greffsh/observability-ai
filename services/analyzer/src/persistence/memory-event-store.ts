@@ -111,6 +111,11 @@ export const makeMemoryEventStore = (options?: {
     findByEventId: (eventId) => Effect.sync(() =>
       Option.fromNullable(storedEvents.get(eventId))
     ),
+    findByIncidentId: (incidentId) => Effect.sync(() =>
+      Array.from(storedEvents.values()).filter(
+        (storedEvent) => storedEvent.incidentId === incidentId
+      )
+    ),
     findIncidentById: (incidentId) => Effect.sync(() =>
       Option.fromNullable(incidents.get(incidentId))
     )

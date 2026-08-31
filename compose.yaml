@@ -31,6 +31,13 @@ services:
       ENVIRONMENT: local
       DATABASE_URL: postgresql://${POSTGRES_USER:-analyzer}:${POSTGRES_PASSWORD:-change-me-postgres}@postgres:5432/${POSTGRES_DB:-grafana_ai}
       GRAFANA_WEBHOOK_SECRET: ${GRAFANA_WEBHOOK_SECRET:-change-me-webhook}
+      ANALYZER_PUBLIC_BASE_URL: http://localhost:${ANALYZER_PORT:-8080}
+      PROMETHEUS_URL: http://prometheus:9090
+      PROMETHEUS_PUBLIC_URL: http://localhost:${PROMETHEUS_PORT:-9090}
+      LOKI_URL: http://loki:3100
+      LOKI_PUBLIC_URL: http://localhost:${LOKI_PORT:-3100}
+      CHECKOUT_API_REVISION: ${CHECKOUT_API_REVISION:-6d8eb76adf7979653ad5db5c9f54f329abc95e71}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
     ports:
       - "${ANALYZER_PORT:-8080}:8080"
     depends_on:

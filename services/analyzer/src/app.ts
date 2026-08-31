@@ -7,11 +7,13 @@ import Fastify, {
   type FastifyReply,
   type FastifyRequest
 } from "fastify"
+import type { EvidenceCollector } from "./evidence/contracts.js"
 import { normalizeGrafanaWebhook } from "./ingestion/normalize-grafana-webhook.js"
 import type { EffectRunner } from "./logging.js"
 import type { EventStore } from "./persistence/event-store.js"
 
 type AppOptions = {
+  evidenceCollector: EvidenceCollector
   eventStore: EventStore
   grafanaWebhookSecret: string
   logger?: FastifyBaseLogger
@@ -175,6 +177,24 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
 
     return reply.code(200).send(result.right.value)
   })
+
+  app.post<{ Params: { incidentId: string } }>(
+    "/v1/incidents/:incidentId/evidence",
+    { onRequest: authenticate },
+    async (request, reply) => {
+      const result = await runEffect(
+        Effect.either(options.evidenceCollector.collect(request.params.incidentId))
+      )
+
+      if (Either.isLeft(result)) {
+        return result.left._tag === "IncidentEvidenceNotFoundError"
+          ? reply.code(404).send({ error: "incident_not_found" })
+          : reply.code(503).send({ error: "persistence_unavailable" })
+      }
+
+      return reply.code(200).send(result.right)
+    }
+  )
 
   return app
 }

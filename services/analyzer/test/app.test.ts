@@ -1,6 +1,7 @@
 import { Effect, Option } from "effect"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { buildApp } from "../src/app.ts"
+import { makeEvidenceCollector } from "../src/evidence/evidence-collector.ts"
 import { EventStoreError, type EventStore } from "../src/persistence/event-store.ts"
 import { makeMemoryEventStore } from "../src/persistence/memory-event-store.ts"
 import { firingWebhookFixture } from "./fixtures/grafana-webhook.ts"
@@ -8,9 +9,17 @@ import { firingWebhookFixture } from "./fixtures/grafana-webhook.ts"
 let app: ReturnType<typeof buildApp>
 
 beforeEach(() => {
+  const eventStore = makeMemoryEventStore({
+    now: () => new Date("2026-08-28T13:21:06Z")
+  })
   app = buildApp({
-    eventStore: makeMemoryEventStore({
-      now: () => new Date("2026-08-28T13:21:06Z")
+    eventStore,
+    evidenceCollector: makeEvidenceCollector({
+      eventStore,
+      sources: [],
+      analyzerPublicBaseUrl: "http://analyzer.test",
+      now: () => new Date("2026-08-28T13:21:05Z"),
+      makeId: () => "evidence-package-1"
     }),
     grafanaWebhookSecret: "test-webhook-secret",
     now: () => new Date("2026-08-28T13:21:05Z")
@@ -148,6 +157,36 @@ describe("Analyzer HTTP API", () => {
     expect(response.json()).toEqual({ error: "incident_not_found" })
   })
 
+  it("collects an evidence package for an incident", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/grafana",
+      headers: { authorization: "Bearer test-webhook-secret" },
+      payload: firingWebhookFixture
+    })
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/incidents/memory-incident-1/evidence",
+      headers: { authorization: "Bearer test-webhook-secret" }
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toMatchObject({
+      schemaVersion: 1,
+      packageId: "evidence-package-1",
+      incidentId: "memory-incident-1",
+      window: {
+        start: "2026-08-28T13:16:00.000Z",
+        end: "2026-08-28T13:21:05.000Z"
+      },
+      evidence: [{
+        source: "alert",
+        reference: "http://analyzer.test/v1/events/fixture-checkout-failure%3Afiring%3A2026-08-28T13%3A21%3A00.000Z"
+      }],
+      limitations: []
+    })
+  })
+
   it("returns 404 for an unknown event", async () => {
     const response = await app.inject({
       method: "GET",
@@ -166,10 +205,16 @@ describe("Analyzer HTTP API", () => {
         cause: new Error("database unavailable")
       })),
       findByEventId: () => Effect.succeed(Option.none()),
+      findByIncidentId: () => Effect.succeed([]),
       findIncidentById: () => Effect.succeed(Option.none())
     }
     const unavailableApp = buildApp({
       eventStore: unavailableStore,
+      evidenceCollector: makeEvidenceCollector({
+        eventStore: unavailableStore,
+        sources: [],
+        analyzerPublicBaseUrl: "http://analyzer.test"
+      }),
       grafanaWebhookSecret: "test-webhook-secret",
       now: () => new Date("2026-08-28T13:21:05Z")
     })

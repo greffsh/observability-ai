@@ -246,6 +246,35 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
           cause
         }))
       ),
+      findByIncidentId: (incidentId) => sql<StoredEventRow>`
+        SELECT
+          id,
+          incident_id AS "incidentId",
+          created_at AS "storedAt",
+          schema_version AS "schemaVersion",
+          source,
+          event_id AS "eventId",
+          alert_fingerprint AS "alertFingerprint",
+          alert_name AS "alertName",
+          service,
+          environment,
+          state,
+          started_at AS "startedAt",
+          ended_at AS "endedAt",
+          received_at AS "receivedAt",
+          labels,
+          annotations,
+          generator_url AS "generatorUrl"
+        FROM alert_events
+        WHERE incident_id = ${incidentId}
+        ORDER BY received_at, created_at
+      `.pipe(
+        Effect.map((rows) => rows.map(rowToStoredEvent)),
+        Effect.mapError((cause) => new EventStoreError({
+          operation: "find",
+          cause
+        }))
+      ),
       findIncidentById: (incidentId) => sql<StoredIncidentRow>`
         SELECT
           id,

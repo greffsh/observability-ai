@@ -26,6 +26,9 @@ export type EventStore = {
   readonly findByEventId: (
     eventId: string
   ) => Effect.Effect<Option.Option<StoredAlertEvent>, EventStoreError>
+  readonly findByIncidentId: (
+    incidentId: string
+  ) => Effect.Effect<ReadonlyArray<StoredAlertEvent>, EventStoreError>
   readonly findIncidentById: (
     incidentId: string
   ) => Effect.Effect<Option.Option<Incident>, EventStoreError>
