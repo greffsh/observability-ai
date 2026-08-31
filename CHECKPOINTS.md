@@ -617,7 +617,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 ### CP-07 — Coletar um pacote de evidências
 
-**Estado:** `PENDENTE`
+**Estado:** `CONCLUÍDO`
 
 **Objetivo:** buscar contexto relacionado ao incidente, inclusive a revisão implantada da codebase, sem depender ainda de IA.
 
@@ -632,13 +632,15 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Critérios de aceite:**
 
-- [ ] O pacote contém o alerta e contexto de logs, métricas e codebase, se disponíveis.
-- [ ] Cada evidência informa origem, intervalo e referência consultável.
-- [ ] Evidência de código informa repositório, commit, arquivo e linhas consultadas.
-- [ ] Uma fonte indisponível é registrada como limitação sem invalidar todo o pacote.
-- [ ] Conteúdo é sanitizado antes de ficar disponível para o modelo.
+- [x] O pacote contém o alerta e contexto de logs, métricas e codebase, se disponíveis.
+- [x] Cada evidência informa origem, intervalo e referência consultável.
+- [x] Evidência de código informa repositório, commit, arquivo e linhas consultadas.
+- [x] Uma fonte indisponível é registrada como limitação sem invalidar todo o pacote.
+- [x] Conteúdo é sanitizado antes de ficar disponível para o modelo.
 
-**Evidências:** _a preencher_
+**Evidências:** módulo `services/analyzer/src/evidence`; endpoint autenticado `POST /v1/incidents/:incidentId/evidence`; adapters limitados para Prometheus, Loki e GitHub; pesquisa `docs/research/cp07-evidence-source-apis.md`; 33 testes e typecheck aprovados em 2026-08-31.
+
+**Limitação aceita para a PoC:** o commit implantado da `checkout-api` é informado manualmente por `CHECKOUT_API_REVISION` e deve ser um SHA completo. Uma implantação futura deve obter essa revisão dos metadados do artefato ou do sistema de deployment para impedir divergência entre a configuração e o código executado.
 
 ---
 
@@ -1013,3 +1015,4 @@ Usar uma entrada por decisão tomada:
 | 2026-08-28 | CP-06A iniciado; incidentes permanecem separados por ocorrência e resolução órfã reconstrói um incidente parcial. | Codex       |
 | 2026-08-28 | CP-06A concluído com identidade, estados e casos-limite aprovados; CP-06B aberto para auditoria do schema. | Codex       |
 | 2026-08-31 | CP-06 concluído com modelo persistido, correlação transacional, ciclo de vida, consulta e testes de eventos fora de ordem. | Codex       |
+| 2026-08-31 | CP-07 concluído com pacote limitado e sanitizado de alertas, métricas, logs e codebase, tolerando falhas parciais. | Codex       |
