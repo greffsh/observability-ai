@@ -46,7 +46,9 @@ export const makePrometheusEvidenceSource = (
     const selector = `service="${promqlString(context.incident.service)}",environment="${promqlString(context.incident.environment)}"`
     const queries = [
       `checkout_failure_mode{${selector}}`,
-      `checkout_requests_total{${selector}}`
+      `checkout_requests_total{${selector}}`,
+      `checkout_availability{${selector}}`,
+      `checkout_last_change_timestamp_seconds{${selector}}`
     ]
     const durationSeconds = Math.max(
       1,

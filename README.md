@@ -62,11 +62,21 @@ O checkout começa saudável:
 curl --fail http://localhost:8081/checkout
 ```
 
-Ative a falha e confirme uma resposta HTTP `503`:
+Ative a degradação e confirme que somente o checkout responde HTTP `503`:
 
 ```bash
 curl --request POST http://localhost:8081/control/failure
 curl --include http://localhost:8081/checkout
+curl --fail http://localhost:8081/health
+```
+
+Para o cenário de indisponibilidade, registre a mudança e derrube também o
+health check:
+
+```bash
+curl --request POST http://localhost:8081/control/change
+curl --request POST http://localhost:8081/control/failure/unavailable
+curl --include http://localhost:8081/health
 ```
 
 Interrompa a falha e confirme a recuperação:
@@ -187,6 +197,19 @@ curl --header "Authorization: Bearer change-me-webhook" \
 O incidente informa seu estado (`open`, `resolved` ou `closed_unconfirmed`),
 a identidade do alerta, o início e a resolução conhecida, além de indicar em
 `firingObserved` se o Analyzer observou o disparo.
+
+Para coletar as evidências e executar a classificação determinística:
+
+```bash
+curl --request POST \
+  --header "Authorization: Bearer change-me-webhook" \
+  "http://localhost:8080/v1/incidents/UUID-DO-INCIDENTE/severity"
+```
+
+A resposta contém `assessment` com a severidade recomendada, os sinais
+calculados, as regras acionadas, observações e limitações, além do
+`evidencePackage` usado na decisão. A mudança recente é relatada como contexto;
+ela não é usada como prova de causa.
 
 O valor acima é somente o padrão local. Um segredo real não deve ser escrito
 em comandos compartilhados, documentação ou logs.

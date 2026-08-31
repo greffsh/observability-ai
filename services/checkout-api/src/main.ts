@@ -4,7 +4,10 @@ const port = Number.parseInt(process.env.PORT ?? "8081", 10)
 const app = buildApp({
   logger: true,
   serviceName: process.env.SERVICE_NAME ?? "checkout-api",
-  environment: process.env.ENVIRONMENT ?? "local"
+  environment: process.env.ENVIRONMENT ?? "local",
+  ...(process.env.SOURCE_REVISION === undefined
+    ? {}
+    : { sourceRevision: process.env.SOURCE_REVISION })
 })
 
 try {

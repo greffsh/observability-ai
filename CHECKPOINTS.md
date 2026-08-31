@@ -133,8 +133,8 @@ O formato definitivo e os nomes dos campos ainda serão decididos, mas essas inf
 | DT-05 | Provedor e modelo de IA                     | A definir                                                  | CP-09                     | PENDENTE |
 | DT-06 | Estratégia de acesso ao modelo              | API direta; gateway interno; abstração própria             | CP-09                     | PENDENTE |
 | DT-07 | Canal inicial de notificação                | Webhook local enviado diretamente pelo Analyzer            | CP-11                     | DECIDIDO |
-| DT-08 | Taxonomia de severidade                     | Cinco níveis propostos; taxonomia existente da organização | CP-08                     | PENDENTE |
-| DT-09 | Metadados de criticidade dos serviços       | Arquivo versionado; catálogo; labels do Grafana            | CP-08                     | PENDENTE |
+| DT-08 | Taxonomia de severidade                     | Informativa, baixa, média, alta, crítica e inconclusiva     | CP-08                     | DECIDIDO |
+| DT-09 | Metadados de criticidade dos serviços       | Catálogo versionado por serviço e ambiente                  | CP-08                     | DECIDIDO |
 | DT-10 | Política de retenção de payloads e análises | A definir                                                  | Antes de usar dados reais | PENDENTE |
 | DT-11 | Framework do Analyzer                       | Effect estável com adoção controlada                       | CP-04                     | DECIDIDO |
 | DT-12 | Framework HTTP                              | Fastify nas aplicações TypeScript                          | CP-03                     | DECIDIDO |
@@ -646,9 +646,11 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 ### CP-08 — Implementar severidade determinística
 
-**Estado:** `PENDENTE`
+**Estado:** `CONCLUÍDO`
 
 **Objetivo:** criar uma linha de base auditável para criticidade, independente do modelo.
+
+**Marco de entrega atual:** a primeira entrega do projeto será encerrada ao concluir este checkpoint. CP-09 a CP-14 permanecem planejados para uma fase posterior; não fazem parte desta entrega e não são considerados concluídos ou descartados.
 
 **Entregáveis:**
 
@@ -659,14 +661,20 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Critérios de aceite:**
 
-- [ ] A mesma entrada sempre produz a mesma classificação.
-- [ ] A saída explica quais regras foram acionadas.
-- [ ] Casos sem dados suficientes produzem resultado inconclusivo ou conservador definido.
-- [ ] Os três cenários de CP-00 possuem resultado esperado testado.
+- [x] A mesma entrada sempre produz a mesma classificação.
+- [x] A saída explica quais regras foram acionadas.
+- [x] Casos sem dados suficientes produzem resultado inconclusivo ou conservador definido.
+- [x] Os três cenários de CP-00 possuem resultado esperado testado.
 
-**Decisões necessárias:** DT-08 e DT-09.
+**Decisões:** DT-08 e DT-09 concluídas pela DEC-012.
 
-**Evidências:** _a preencher_
+**Taxonomia aprovada:** `informativa`, `baixa`, `media`, `alta`, `critica` e `inconclusiva`. O último valor representa ausência de dados suficientes e não participa da ordenação de impacto.
+
+**Política inicial:** o catálogo versionado define a `checkout-api` como criticidade `high` no ambiente `local`, com teto `critica`. Tráfego sem impacto é informativo; uma falha isolada é baixa; múltiplas falhas são médias; falha por pelo menos 60 segundos ou cinco falhas com taxa mínima de 50% é alta; disponibilidade igual a zero em serviço de alta criticidade é crítica. Ausência de sinais mensuráveis ou de metadados do serviço/ambiente produz resultado inconclusivo.
+
+**Auditoria dos sinais disponíveis:** `checkout-api` agora distingue `healthy`, `degraded` e `unavailable`, expõe `checkout_availability` e registra `checkout_last_change_timestamp_seconds`. A mudança recente é somente uma observação contextual. A regra crítica depende exclusivamente da indisponibilidade medida e não do texto do alerta nem da proximidade com a mudança.
+
+**Evidências:** módulo `services/analyzer/src/severity`; endpoint autenticado `POST /v1/incidents/:incidentId/severity`; modos e métricas controláveis em `services/checkout-api`; testes automatizados dos cenários CV-01 (`baixa`), CV-02 (`alta`) e CV-03 (`critica`); 44 testes, typecheck e build aprovados; CV-03 integrado validado em 2026-08-31 no incidente `ed67bfda-35d8-4f31-8883-9db414a4515f`, com regra `SERVICE_UNAVAILABLE`, evidência `metrics-3` e mudança recente explicitamente tratada como não causal.
 
 ---
 
@@ -989,6 +997,16 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** eventos fora de ordem preservam o histórico correto; incidentes reconstruídos ficam explícitos; cada evento pertence a uma única ocorrência; correlação causal entre alertas distintos permanece fora desta etapa.
 - **Checkpoints afetados:** CP-06, CP-07, CP-09 e CP-11.
 
+### DEC-012 — Severidade determinística e criticidade versionada
+
+- **Data:** 2026-08-31
+- **Estado:** aceita
+- **Contexto:** a primeira entrega precisa classificar impacto de forma reproduzível e auditável antes de introduzir um modelo de IA.
+- **Decisão:** adotar a taxonomia `informativa`, `baixa`, `media`, `alta`, `critica` e `inconclusiva`; manter criticidade e teto por ambiente em catálogo versionado; usar somente métricas objetivas para acionar severidade; tratar mudança recente como contexto não causal.
+- **Alternativas consideradas:** usar a label textual do alerta; deixar a IA escolher a severidade; inferir causalidade pela proximidade de uma mudança; armazenar criticidade apenas no Grafana.
+- **Consequências:** a mesma entrada produz a mesma decisão e cita regras/evidências; serviços ou ambientes não catalogados e sinais insuficientes ficam inconclusivos; mudanças no catálogo ou nos limiares passam por revisão de código.
+- **Checkpoints afetados:** CP-08 e CP-10.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                       | Responsável |
@@ -1016,3 +1034,5 @@ Usar uma entrada por decisão tomada:
 | 2026-08-28 | CP-06A concluído com identidade, estados e casos-limite aprovados; CP-06B aberto para auditoria do schema. | Codex       |
 | 2026-08-31 | CP-06 concluído com modelo persistido, correlação transacional, ciclo de vida, consulta e testes de eventos fora de ordem. | Codex       |
 | 2026-08-31 | CP-07 concluído com pacote limitado e sanitizado de alertas, métricas, logs e codebase, tolerando falhas parciais. | Codex       |
+| 2026-08-31 | CP-08 iniciado como marco da entrega atual; auditoria identificou sinais ausentes para reproduzir CV-03 com responsabilidade. | Codex       |
+| 2026-08-31 | CP-08 e a primeira entrega concluídos com severidade determinística, catálogo versionado e CV-01 a CV-03 testados. | Codex       |

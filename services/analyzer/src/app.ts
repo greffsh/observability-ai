@@ -11,6 +11,7 @@ import type { EvidenceCollector } from "./evidence/contracts.js"
 import { normalizeGrafanaWebhook } from "./ingestion/normalize-grafana-webhook.js"
 import type { EffectRunner } from "./logging.js"
 import type { EventStore } from "./persistence/event-store.js"
+import type { SeverityAssessor } from "./severity/contracts.js"
 
 type AppOptions = {
   evidenceCollector: EvidenceCollector
@@ -19,6 +20,7 @@ type AppOptions = {
   logger?: FastifyBaseLogger
   now?: () => Date
   runEffect?: EffectRunner
+  severityAssessor: SeverityAssessor
 }
 
 const SilentLogger = Logger.replace(Logger.defaultLogger, Logger.none)
@@ -190,6 +192,24 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
         return result.left._tag === "IncidentEvidenceNotFoundError"
           ? reply.code(404).send({ error: "incident_not_found" })
           : reply.code(503).send({ error: "persistence_unavailable" })
+      }
+
+      return reply.code(200).send(result.right)
+    }
+  )
+
+  app.post<{ Params: { incidentId: string } }>(
+    "/v1/incidents/:incidentId/severity",
+    { onRequest: authenticate },
+    async (request, reply) => {
+      const result = await runEffect(
+        Effect.either(options.severityAssessor.assess(request.params.incidentId))
+      )
+
+      if (Either.isLeft(result)) {
+        return result.left._tag === "SeverityIncidentNotFoundError"
+          ? reply.code(404).send({ error: "incident_not_found" })
+          : reply.code(503).send({ error: "severity_unavailable" })
       }
 
       return reply.code(200).send(result.right)

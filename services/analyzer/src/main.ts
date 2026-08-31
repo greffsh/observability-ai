@@ -10,6 +10,8 @@ import { makePrometheusEvidenceSource } from "./evidence/prometheus-source.js"
 import { makeServiceCatalog } from "./evidence/service-catalog.js"
 import { makeApplicationLogging } from "./logging.js"
 import { makePostgresEventStore } from "./persistence/postgres-event-store.js"
+import { serviceCriticalityCatalog } from "./severity/service-criticality.js"
+import { makeSeverityAssessor } from "./severity/severity-assessor.js"
 
 const configuration = Config.all({
   port: Config.integer("PORT").pipe(Config.withDefault(8080)),
@@ -86,13 +88,19 @@ const main = Effect.gen(function* () {
       })
     ]
   })
+  const severityAssessor = makeSeverityAssessor({
+    eventStore,
+    evidenceCollector,
+    catalog: serviceCriticalityCatalog
+  })
 
   const app = buildApp({
     evidenceCollector,
     eventStore,
     grafanaWebhookSecret: Redacted.value(config.grafanaWebhookSecret),
     logger: logging.logger,
-    runEffect: logging.runPromise
+    runEffect: logging.runPromise,
+    severityAssessor
   })
 
   yield* Effect.acquireRelease(

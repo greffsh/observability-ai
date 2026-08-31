@@ -4,6 +4,8 @@ import { buildApp } from "../src/app.ts"
 import { makeEvidenceCollector } from "../src/evidence/evidence-collector.ts"
 import { EventStoreError, type EventStore } from "../src/persistence/event-store.ts"
 import { makeMemoryEventStore } from "../src/persistence/memory-event-store.ts"
+import { serviceCriticalityCatalog } from "../src/severity/service-criticality.ts"
+import { makeSeverityAssessor } from "../src/severity/severity-assessor.ts"
 import { firingWebhookFixture } from "./fixtures/grafana-webhook.ts"
 
 let app: ReturnType<typeof buildApp>
@@ -12,17 +14,23 @@ beforeEach(() => {
   const eventStore = makeMemoryEventStore({
     now: () => new Date("2026-08-28T13:21:06Z")
   })
+  const evidenceCollector = makeEvidenceCollector({
+    eventStore,
+    sources: [],
+    analyzerPublicBaseUrl: "http://analyzer.test",
+    now: () => new Date("2026-08-28T13:21:05Z"),
+    makeId: () => "evidence-package-1"
+  })
   app = buildApp({
     eventStore,
-    evidenceCollector: makeEvidenceCollector({
-      eventStore,
-      sources: [],
-      analyzerPublicBaseUrl: "http://analyzer.test",
-      now: () => new Date("2026-08-28T13:21:05Z"),
-      makeId: () => "evidence-package-1"
-    }),
+    evidenceCollector,
     grafanaWebhookSecret: "test-webhook-secret",
-    now: () => new Date("2026-08-28T13:21:05Z")
+    now: () => new Date("2026-08-28T13:21:05Z"),
+    severityAssessor: makeSeverityAssessor({
+      eventStore,
+      evidenceCollector,
+      catalog: serviceCriticalityCatalog
+    })
   })
 })
 
@@ -187,6 +195,29 @@ describe("Analyzer HTTP API", () => {
     })
   })
 
+  it("returns an auditable inconclusive severity when impact metrics are absent", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/grafana",
+      headers: { authorization: "Bearer test-webhook-secret" },
+      payload: firingWebhookFixture
+    })
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/incidents/memory-incident-1/severity",
+      headers: { authorization: "Bearer test-webhook-secret" }
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toMatchObject({
+      assessment: {
+        recommendedSeverity: "inconclusiva",
+        triggeredRules: [{ code: "INSUFFICIENT_IMPACT_DATA" }]
+      },
+      evidencePackage: { packageId: "evidence-package-1" }
+    })
+  })
+
   it("returns 404 for an unknown event", async () => {
     const response = await app.inject({
       method: "GET",
@@ -208,15 +239,21 @@ describe("Analyzer HTTP API", () => {
       findByIncidentId: () => Effect.succeed([]),
       findIncidentById: () => Effect.succeed(Option.none())
     }
+    const unavailableEvidenceCollector = makeEvidenceCollector({
+      eventStore: unavailableStore,
+      sources: [],
+      analyzerPublicBaseUrl: "http://analyzer.test"
+    })
     const unavailableApp = buildApp({
       eventStore: unavailableStore,
-      evidenceCollector: makeEvidenceCollector({
-        eventStore: unavailableStore,
-        sources: [],
-        analyzerPublicBaseUrl: "http://analyzer.test"
-      }),
+      evidenceCollector: unavailableEvidenceCollector,
       grafanaWebhookSecret: "test-webhook-secret",
-      now: () => new Date("2026-08-28T13:21:05Z")
+      now: () => new Date("2026-08-28T13:21:05Z"),
+      severityAssessor: makeSeverityAssessor({
+        eventStore: unavailableStore,
+        evidenceCollector: unavailableEvidenceCollector,
+        catalog: serviceCriticalityCatalog
+      })
     })
 
     try {

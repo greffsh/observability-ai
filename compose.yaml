@@ -8,6 +8,7 @@ services:
       PORT: 8081
       SERVICE_NAME: checkout-api
       ENVIRONMENT: local
+      SOURCE_REVISION: ${CHECKOUT_API_REVISION:-6d8eb76adf7979653ad5db5c9f54f329abc95e71}
     ports:
       - "${CHECKOUT_API_PORT:-8081}:8081"
     healthcheck:

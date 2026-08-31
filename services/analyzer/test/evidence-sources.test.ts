@@ -61,7 +61,7 @@ describe("evidence source adapters", () => {
     const result = await Effect.runPromise(source.collect(context))
     const requestUrl = fetchMock.mock.calls[0]?.[0] as URL
 
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(4)
     expect(requestUrl.origin).toBe("http://prometheus:9090")
     expect(requestUrl.searchParams.get("limit")).toBe("20")
     expect(result.evidence[0]).toMatchObject({

@@ -25,7 +25,23 @@ export const createMetrics = (service: string, environment: string) => {
     registers: [registry]
   })
 
+  const availability = new Gauge({
+    name: "checkout_availability",
+    help: "Whether checkout-api is available to serve traffic.",
+    registers: [registry]
+  })
+
+  const lastChangeTimestamp = new Gauge({
+    name: "checkout_last_change_timestamp_seconds",
+    help: "Unix timestamp of the last controlled checkout-api change marker.",
+    registers: [registry]
+  })
+
+  checkoutRequests.inc({ outcome: "success", http_status: "200" }, 0)
+  checkoutRequests.inc({ outcome: "failure", http_status: "503" }, 0)
   failureMode.set(0)
+  availability.set(1)
+  lastChangeTimestamp.set(0)
 
   return {
     contentType: registry.contentType,
@@ -34,6 +50,8 @@ export const createMetrics = (service: string, environment: string) => {
       checkoutDuration.observe({ outcome }, duration)
     },
     setFailureMode: (enabled: boolean) => failureMode.set(enabled ? 1 : 0),
+    setAvailability: (available: boolean) => availability.set(available ? 1 : 0),
+    recordChange: (timestampSeconds: number) => lastChangeTimestamp.set(timestampSeconds),
     render: () => registry.metrics()
   }
 }

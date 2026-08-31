@@ -24,6 +24,18 @@ describe("checkout-api", () => {
     })
   })
 
+  it("reports service unavailability independently from a dependency degradation", async () => {
+    await app.inject({ method: "POST", url: "/control/failure/unavailable" })
+
+    const health = await app.inject({ method: "GET", url: "/health" })
+    const checkout = await app.inject({ method: "GET", url: "/checkout" })
+
+    expect(health.statusCode).toBe(503)
+    expect(health.json()).toEqual({ status: "unavailable", service: "checkout-api" })
+    expect(checkout.statusCode).toBe(503)
+    expect(checkout.json()).toEqual({ error: "service_unavailable", service: "checkout-api" })
+  })
+
   it("enables and disables a deterministic checkout failure", async () => {
     const healthy = await app.inject({ method: "GET", url: "/checkout" })
     expect(healthy.statusCode).toBe(200)
@@ -58,6 +70,23 @@ describe("checkout-api", () => {
     )
     expect(response.body).toContain(
       'checkout_failure_mode{service="checkout-api",environment="local"} 1'
+    )
+    expect(response.body).toContain(
+      'checkout_availability{service="checkout-api",environment="local"} 1'
+    )
+  })
+
+  it("records an explicit change marker without claiming causality", async () => {
+    const changedAt = new Date("2026-08-31T12:00:00.000Z")
+    await app.close()
+    app = buildApp({ now: () => changedAt, sourceRevision: "abc123" })
+
+    const change = await app.inject({ method: "POST", url: "/control/change" })
+    const metrics = await app.inject({ method: "GET", url: "/metrics" })
+
+    expect(change.json()).toEqual({ changedAt: changedAt.toISOString(), revision: "abc123" })
+    expect(metrics.body).toContain(
+      `checkout_last_change_timestamp_seconds{service="checkout-api",environment="local"} ${changedAt.getTime() / 1_000}`
     )
   })
 })
