@@ -175,8 +175,18 @@ curl --header "Authorization: Bearer change-me-webhook" \
   "http://localhost:8080/v1/events/manual-checkout-failure:firing:2026-08-28T09:00:00.000Z"
 ```
 
-O resultado inclui o UUID do banco, `incidentId` — ainda nulo até o CP-06 —,
-horário de persistência e o contrato interno normalizado.
+O resultado inclui o UUID do evento no banco, o `incidentId` correlacionado,
+o horário de persistência e o contrato interno normalizado. Use esse
+`incidentId` para consultar o ciclo de vida da ocorrência:
+
+```bash
+curl --header "Authorization: Bearer change-me-webhook" \
+  "http://localhost:8080/v1/incidents/UUID-DO-INCIDENTE"
+```
+
+O incidente informa seu estado (`open`, `resolved` ou `closed_unconfirmed`),
+a identidade do alerta, o início e a resolução conhecida, além de indicar em
+`firingObserved` se o Analyzer observou o disparo.
 
 O valor acima é somente o padrão local. Um segredo real não deve ser escrito
 em comandos compartilhados, documentação ou logs.

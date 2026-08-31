@@ -2,7 +2,7 @@
 
 > Documento vivo de requisitos, decisões e progresso da PoC.
 >
-> Última atualização: 2026-08-28
+> Última atualização: 2026-08-31
 
 Considerações específicas para uma implantação futura são mantidas em
 `HOMOLOGACAO.md`; decisões que alterem a PoC continuam sendo registradas neste
@@ -520,7 +520,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 ### CP-06 — Correlacionar, deduplicar e tratar o ciclo de vida
 
-**Estado:** `PENDENTE`
+**Estado:** `CONCLUÍDO`
 
 **Objetivo:** agrupar repetições do mesmo problema e controlar transições de estado.
 
@@ -533,13 +533,85 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Critérios de aceite:**
 
-- [ ] Reenvio idêntico não cria outro incidente.
-- [ ] Ocorrências compatíveis atualizam o incidente existente.
-- [ ] Serviços ou ambientes diferentes não são correlacionados indevidamente.
-- [ ] Um evento resolvido encerra ou atualiza corretamente o incidente correspondente.
-- [ ] Regras possuem testes automatizados.
+- [x] Reenvio idêntico não cria outro incidente.
+- [x] Ocorrências compatíveis atualizam o incidente existente.
+- [x] Serviços ou ambientes diferentes não são correlacionados indevidamente.
+- [x] Um evento resolvido encerra ou atualiza corretamente o incidente correspondente.
+- [x] Regras possuem testes automatizados.
 
-**Evidências:** _a preencher_
+**Evidências:** CP-06A, CP-06B e CP-06C concluídos; 26 testes e typecheck aprovados; migration e fluxos normal, duplicado e fora de ordem validados no PostgreSQL local em 2026-08-31.
+
+#### CP-06A — Aprovar o domínio e os casos-limite
+
+**Estado:** `CONCLUÍDO`
+
+**Decisões confirmadas:**
+
+- nesta etapa, cada incidente representa exatamente uma ocorrência de uma instância de alerta;
+- alertas diferentes permanecem em incidentes separados, mesmo que ocorram próximos ou pareçam relacionados;
+- um evento `resolved` sem incidente aberto cria um incidente já resolvido, marcado com ciclo de vida parcial;
+- se o `firing` correspondente chegar depois, ele é associado ao incidente reconstruído e completa seu histórico sem reabri-lo;
+- reenvios do mesmo `resolved` continuam sujeitos à idempotência por `event_id` e não criam novos incidentes;
+- notificações com o mesmo `event_id` são duplicatas estritas: não criam outro evento ou incidente e não atualizam `last_seen_at`;
+- retries de transporte e lembretes idênticos do Grafana não serão diferenciados nesta etapa; auditoria de entregas, se necessária, será um conceito separado;
+- um `firing` com novo `startsAt` para uma instância que ainda possui incidente aberto inicia outro episódio;
+- o incidente anterior passa para `closed_unconfirmed`, sem afirmar recuperação, e o novo incidente passa para `open`;
+- um `resolved` atrasado pode atualizar o incidente anterior de `closed_unconfirmed` para `resolved`, usando o `startsAt` para selecionar o episódio correto;
+- deve existir no máximo um incidente `open` por identidade de instância de alerta;
+- todo evento `resolved` compatível encerra o incidente como `resolved`, independentemente de `grafana_state_reason`;
+- `grafana_state_reason`, quando existir, permanece nas annotations do evento para auditoria, mas não produz ramificações no ciclo de vida desta etapa;
+- a identidade da instância combina origem, ambiente, serviço, nome do alerta e `fingerprint`;
+- o episódio específico combina a identidade da instância com `startsAt`;
+- usar `startsAt` como verificação do episódio, sem tratá-lo isoladamente como identidade;
+- diante de conflito entre identidade e timestamps, persistir o evento e registrar a inconsistência sem encerrar automaticamente um incidente mais novo.
+
+**Evidências:** glossário em `CONTEXT.md`; pesquisa em `docs/research/grafana-alert-identity.md`; identidade, estados e casos-limite aprovados em conversa em 2026-08-28. Nenhuma regra foi implementada ainda.
+
+#### CP-06B — Aprovar o modelo persistido de incidentes
+
+**Estado:** `CONCLUÍDO`
+
+**Modelo aprovado:**
+
+- manter a relação `incidents 1:N alert_events`, sem criar `alert_occurrences` nesta etapa;
+- usar `correlation_key` como hash canônico da identidade da instância;
+- identificar unicamente um episódio pela combinação `correlation_key + started_at`;
+- estados do incidente: `open`, `resolved` e `closed_unconfirmed`;
+- registrar `firing_observed` para distinguir um ciclo acompanhado desde o disparo de um incidente reconstruído apenas pelo `resolved`;
+- substituir o ambíguo `first_seen_at` por `started_at`, que representa o `startsAt` do Grafana;
+- remover `last_seen_at`, pois duplicatas estritas não representam novas observações de domínio;
+- manter `resolved_at` como o `endsAt` informado pelo Grafana e `created_at`/`updated_at` como auditoria do Analyzer;
+- manter `incident_id` em `alert_events` para associar cada evento ao episódio correspondente;
+- garantir por índice parcial no máximo um incidente `open` por `correlation_key`;
+- garantir por índice único que `correlation_key + started_at` não produza dois incidentes para o mesmo episódio.
+
+**Invariantes propostas:**
+
+- `open` não possui `resolved_at`;
+- `resolved` possui `resolved_at`;
+- `resolved_at` não pode ser anterior a `started_at`;
+- `closed_unconfirmed` não possui `resolved_at`;
+- um incidente reconstruído nasce `resolved` com `firing_observed=false`;
+- um incidente observado desde o `firing` nasce `open` com `firing_observed=true`;
+- um `firing` atrasado muda `firing_observed` para `true`, sem reabrir um incidente já resolvido.
+
+**Evidências:** modelo confrontado com o glossário, a migration inicial e os casos fora de ordem; ajuste temporal incorporado; migration `0002_incident_lifecycle` aplicada com sucesso no PostgreSQL 18.6 local em 2026-08-31.
+
+#### CP-06C — Implementar correlação e ciclo de vida
+
+**Estado:** `CONCLUÍDO`
+
+- [x] A chave de correlação usa SHA-256 sobre uma tupla canônica de origem, ambiente, serviço, nome e fingerprint do alerta.
+- [x] Evento, incidente e associação são persistidos na mesma transação.
+- [x] Duplicata estrita por `event_id` não cria nem atualiza incidente.
+- [x] `firing` e `resolved` da mesma ocorrência são associados pelo mesmo `correlation_key + started_at`.
+- [x] Uma resolução recebida antes do disparo cria um incidente reconstruído e o `firing` atrasado completa o histórico sem reabri-lo.
+- [x] Uma nova ocorrência encerra a anterior como `closed_unconfirmed`; uma resolução atrasada atualiza somente a ocorrência correspondente.
+- [x] Locks transacionais por chave e índices únicos preservam as invariantes diante de ingestões concorrentes.
+- [x] Adapters PostgreSQL e memória implementam o mesmo comportamento observável.
+- [x] `GET /v1/incidents/:incidentId` permite consultar o incidente correlacionado.
+
+**Evidências:** cinco testes automatizados específicos de correlação e 26 testes totais aprovados; typecheck e build concluídos; migration aplicada e schema/índices inspecionados; fluxo real confirmou uma duplicata sem novo incidente e a transição `open → resolved`; cenário fora de ordem confirmou `closed_unconfirmed → resolved` no incidente anterior mantendo o mais novo `open`, em 2026-08-31.
 
 ---
 
@@ -905,6 +977,16 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** a interface é o test surface, persistência em grupo é transacional e o Grafana recebe `503` apenas quando a durabilidade não pode ser garantida.
 - **Checkpoints afetados:** CP-05 e CP-06.
 
+### DEC-011 — Identidade e ciclo de vida persistido do incidente
+
+- **Data:** 2026-08-31
+- **Estado:** aceita
+- **Contexto:** o CP-06 precisava correlacionar eventos repetidos sem agrupar alertas diferentes nem permitir que uma resolução atrasada encerrasse uma ocorrência mais nova.
+- **Decisão:** representar cada ocorrência como um incidente; calcular `correlation_key` a partir da identidade canônica da instância; identificar a ocorrência por `correlation_key + started_at`; usar os estados `open`, `resolved` e `closed_unconfirmed`; registrar `firing_observed`; serializar alterações da mesma instância e impor unicidade no banco.
+- **Alternativas consideradas:** agrupar alertas distintos por janela temporal; usar somente o fingerprint; manter `first_seen_at` e `last_seen_at`; ignorar resoluções sem disparo previamente observado.
+- **Consequências:** eventos fora de ordem preservam o histórico correto; incidentes reconstruídos ficam explícitos; cada evento pertence a uma única ocorrência; correlação causal entre alertas distintos permanece fora desta etapa.
+- **Checkpoints afetados:** CP-06, CP-07, CP-09 e CP-11.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                       | Responsável |
@@ -928,3 +1010,6 @@ Usar uma entrada por decisão tomada:
 | 2026-08-28 | Acesso read-only à revisão implantada da codebase adicionado ao CP-07. | Codex       |
 | 2026-08-28 | Logs do Analyzer padronizados em Effect com sink Pino assíncrono e flush gracioso. | Codex       |
 | 2026-08-28 | CP-05 e CP-05C concluídos com persistência, idempotência e consulta de eventos. | Codex       |
+| 2026-08-28 | CP-06A iniciado; incidentes permanecem separados por ocorrência e resolução órfã reconstrói um incidente parcial. | Codex       |
+| 2026-08-28 | CP-06A concluído com identidade, estados e casos-limite aprovados; CP-06B aberto para auditoria do schema. | Codex       |
+| 2026-08-31 | CP-06 concluído com modelo persistido, correlação transacional, ciclo de vida, consulta e testes de eventos fora de ordem. | Codex       |

@@ -1,5 +1,6 @@
 import { Data, type Effect, type Option } from "effect"
 import type { AlertEvent } from "../contracts/alert-event.js"
+import type { Incident } from "../domain/incident.js"
 
 export class EventStoreError extends Data.TaggedError("EventStoreError")<{
   readonly operation: "find" | "record"
@@ -25,4 +26,7 @@ export type EventStore = {
   readonly findByEventId: (
     eventId: string
   ) => Effect.Effect<Option.Option<StoredAlertEvent>, EventStoreError>
+  readonly findIncidentById: (
+    incidentId: string
+  ) => Effect.Effect<Option.Option<Incident>, EventStoreError>
 }

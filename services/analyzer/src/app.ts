@@ -158,5 +158,23 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
     return reply.code(200).send(result.right.value)
   })
 
+  app.get<{ Params: { incidentId: string } }>("/v1/incidents/:incidentId", {
+    onRequest: authenticate
+  }, async (request, reply) => {
+    const result = await runEffect(
+      Effect.either(options.eventStore.findIncidentById(request.params.incidentId))
+    )
+
+    if (Either.isLeft(result)) {
+      return reply.code(503).send({ error: "persistence_unavailable" })
+    }
+
+    if (Option.isNone(result.right)) {
+      return reply.code(404).send({ error: "incident_not_found" })
+    }
+
+    return reply.code(200).send(result.right.value)
+  })
+
   return app
 }

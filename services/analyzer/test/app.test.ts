@@ -100,7 +100,7 @@ describe("Analyzer HTTP API", () => {
     expect(response.statusCode).toBe(200)
     expect(response.json()).toMatchObject({
       id: "memory-event-1",
-      incidentId: null,
+      incidentId: "memory-incident-1",
       storedAt: "2026-08-28T13:21:06.000Z",
       event: {
         schemaVersion: 1,
@@ -110,6 +110,42 @@ describe("Analyzer HTTP API", () => {
         state: "firing"
       }
     })
+  })
+
+  it("returns the incident correlated to an event", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/grafana",
+      headers: { authorization: "Bearer test-webhook-secret" },
+      payload: firingWebhookFixture
+    })
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/incidents/memory-incident-1",
+      headers: { authorization: "Bearer test-webhook-secret" }
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toMatchObject({
+      id: "memory-incident-1",
+      status: "open",
+      service: "checkout-api",
+      environment: "local",
+      firingObserved: true,
+      startedAt: "2026-08-28T13:21:00.000Z",
+      resolvedAt: null
+    })
+  })
+
+  it("returns 404 for an unknown incident", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/incidents/unknown-incident",
+      headers: { authorization: "Bearer test-webhook-secret" }
+    })
+
+    expect(response.statusCode).toBe(404)
+    expect(response.json()).toEqual({ error: "incident_not_found" })
   })
 
   it("returns 404 for an unknown event", async () => {
@@ -129,7 +165,8 @@ describe("Analyzer HTTP API", () => {
         operation: "record",
         cause: new Error("database unavailable")
       })),
-      findByEventId: () => Effect.succeed(Option.none())
+      findByEventId: () => Effect.succeed(Option.none()),
+      findIncidentById: () => Effect.succeed(Option.none())
     }
     const unavailableApp = buildApp({
       eventStore: unavailableStore,
