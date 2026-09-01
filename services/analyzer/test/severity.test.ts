@@ -9,15 +9,12 @@ const startedAtSeconds = startedAt.getTime() / 1_000
 
 const incident: Incident = {
   id: "incident-1",
-  correlationKey: "correlation",
-  status: "resolved",
-  alertName: "Checkout failure mode enabled",
+  status: "awaiting_confirmation",
   service: "checkout-api",
   environment: "local",
-  alertFingerprint: "checkout",
-  startedAt,
-  resolvedAt: new Date("2026-08-31T10:05:00Z"),
-  firingObserved: true,
+  detectedAt: startedAt,
+  lastActivityAt: new Date("2026-08-31T10:05:00Z"),
+  signalsClearedAt: new Date("2026-08-31T10:05:00Z"),
   createdAt: startedAt,
   updatedAt: new Date("2026-08-31T10:05:00Z")
 }

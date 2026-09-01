@@ -128,7 +128,7 @@ export const classifySeverity = (
   const lastChangeAt = change === null ? null : latestChange(change.series)
   const changeAgeSeconds = lastChangeAt === null
     ? null
-    : (incident.startedAt.getTime() - lastChangeAt.getTime()) / 1_000
+    : (incident.detectedAt.getTime() - lastChangeAt.getTime()) / 1_000
   const recentChange = changeAgeSeconds === null
     ? null
     : changeAgeSeconds >= 0 && changeAgeSeconds <= 10 * 60

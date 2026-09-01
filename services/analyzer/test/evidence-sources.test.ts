@@ -9,15 +9,12 @@ import { makePrometheusEvidenceSource } from "../src/evidence/prometheus-source.
 
 const incident: Incident = {
   id: "incident-1",
-  correlationKey: "correlation",
-  status: "resolved",
-  alertName: "Checkout unavailable",
+  status: "awaiting_confirmation",
   service: "checkout-api",
   environment: "local",
-  alertFingerprint: "checkout",
-  startedAt: new Date("2026-08-31T10:00:00Z"),
-  resolvedAt: new Date("2026-08-31T10:05:00Z"),
-  firingObserved: true,
+  detectedAt: new Date("2026-08-31T10:00:00Z"),
+  lastActivityAt: new Date("2026-08-31T10:05:00Z"),
+  signalsClearedAt: new Date("2026-08-31T10:05:00Z"),
   createdAt: new Date("2026-08-31T10:00:01Z"),
   updatedAt: new Date("2026-08-31T10:05:01Z")
 }

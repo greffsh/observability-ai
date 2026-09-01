@@ -177,7 +177,14 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
       return reply.code(404).send({ error: "incident_not_found" })
     }
 
-    return reply.code(200).send(result.right.value)
+    const occurrences = await runEffect(
+      Effect.either(options.eventStore.findOccurrencesByIncidentId(request.params.incidentId))
+    )
+    if (Either.isLeft(occurrences)) {
+      return reply.code(503).send({ error: "persistence_unavailable" })
+    }
+
+    return reply.code(200).send({ ...result.right.value, occurrences: occurrences.right })
   })
 
   app.post<{ Params: { incidentId: string } }>(

@@ -59,14 +59,21 @@ export const makeEvidenceCollector = (
       }
 
       const incident = incidentResult.value
+      const occurrences = yield* options.eventStore.findOccurrencesByIncidentId(incidentId).pipe(
+        Effect.mapError((cause) => new EvidencePersistenceError({ cause }))
+      )
       const events = yield* options.eventStore.findByIncidentId(incidentId).pipe(
         Effect.mapError((cause) => new EvidencePersistenceError({ cause }))
       )
       const collectedAt = now()
-      const startMs = incident.startedAt.getTime() - policy.lookbackMs
-      const desiredEndMs = incident.resolvedAt === null
+      const occurrenceStartMs = occurrences.reduce(
+        (earliest, occurrence) => Math.min(earliest, occurrence.startedAt.getTime()),
+        incident.detectedAt.getTime()
+      )
+      const startMs = occurrenceStartMs - policy.lookbackMs
+      const desiredEndMs = incident.signalsClearedAt === null
         ? collectedAt.getTime()
-        : incident.resolvedAt.getTime() + policy.lookaheadMs
+        : incident.signalsClearedAt.getTime() + policy.lookaheadMs
       const endMs = Math.max(
         startMs,
         Math.min(collectedAt.getTime(), desiredEndMs, startMs + policy.maxWindowMs)

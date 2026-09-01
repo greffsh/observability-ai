@@ -148,9 +148,13 @@ describe("Analyzer HTTP API", () => {
       status: "open",
       service: "checkout-api",
       environment: "local",
-      firingObserved: true,
-      startedAt: "2026-08-28T13:21:00.000Z",
-      resolvedAt: null
+      detectedAt: "2026-08-28T13:21:00.000Z",
+      signalsClearedAt: null,
+      occurrences: [{
+        status: "open",
+        alertName: "Checkout failure mode enabled",
+        firingObserved: true
+      }]
     })
   })
 
@@ -237,7 +241,8 @@ describe("Analyzer HTTP API", () => {
       })),
       findByEventId: () => Effect.succeed(Option.none()),
       findByIncidentId: () => Effect.succeed([]),
-      findIncidentById: () => Effect.succeed(Option.none())
+      findIncidentById: () => Effect.succeed(Option.none()),
+      findOccurrencesByIncidentId: () => Effect.succeed([])
     }
     const unavailableEvidenceCollector = makeEvidenceCollector({
       eventStore: unavailableStore,

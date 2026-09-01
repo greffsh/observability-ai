@@ -48,7 +48,7 @@ describe("in-memory incident correlation", () => {
     expect(afterDuplicate).toEqual(beforeDuplicate)
   })
 
-  it("resolves the incident for the same episode", async () => {
+  it("resolves an occurrence and moves its incident to awaiting confirmation", async () => {
     const store = makeMemoryEventStore()
     const firing = event()
     const resolved = event({
@@ -67,13 +67,20 @@ describe("in-memory incident correlation", () => {
     const incident = required(await Effect.runPromise(
       store.findIncidentById(required(Option.fromNullable(storedFiring.incidentId)))
     ))
+    const occurrences = await Effect.runPromise(
+      store.findOccurrencesByIncidentId(incident.id)
+    )
 
     expect(storedResolved.incidentId).toBe(storedFiring.incidentId)
     expect(incident).toMatchObject({
+      status: "awaiting_confirmation",
+      signalsClearedAt: new Date("2026-08-28T10:10:00Z")
+    })
+    expect(occurrences).toEqual([expect.objectContaining({
       status: "resolved",
       firingObserved: true,
-      resolvedAt: new Date("2026-08-28T10:10:00Z")
-    })
+      endedAt: new Date("2026-08-28T10:10:00Z")
+    })])
   })
 
   it("completes a reconstructed incident when firing arrives after resolved", async () => {
@@ -94,8 +101,11 @@ describe("in-memory incident correlation", () => {
       store.findIncidentById(required(Option.fromNullable(storedResolved.incidentId)))
     ))
 
-    expect(incident.status).toBe("resolved")
-    expect(incident.firingObserved).toBe(true)
+    const occurrences = await Effect.runPromise(
+      store.findOccurrencesByIncidentId(incident.id)
+    )
+    expect(incident.status).toBe("awaiting_confirmation")
+    expect(occurrences[0]).toMatchObject({ status: "resolved", firingObserved: true })
   })
 
   it("keeps a newer episode open when the previous resolution arrives late", async () => {
@@ -118,21 +128,24 @@ describe("in-memory incident correlation", () => {
     const secondStored = required(await Effect.runPromise(
       store.findByEventId(secondFiring.eventId)
     ))
-    const closed = required(await Effect.runPromise(
+    const previousIncident = required(await Effect.runPromise(
       store.findIncidentById(required(Option.fromNullable(firstStored.incidentId)))
     ))
 
-    expect(closed.status).toBe("closed_unconfirmed")
+    expect(previousIncident.status).toBe("awaiting_confirmation")
+    expect((await Effect.runPromise(
+      store.findOccurrencesByIncidentId(previousIncident.id)
+    ))[0]?.status).toBe("closed_unconfirmed")
 
     await Effect.runPromise(store.record([lateResolution]))
     const previous = required(await Effect.runPromise(
-      store.findIncidentById(closed.id)
+      store.findIncidentById(previousIncident.id)
     ))
     const current = required(await Effect.runPromise(
       store.findIncidentById(required(Option.fromNullable(secondStored.incidentId)))
     ))
 
-    expect(previous.status).toBe("resolved")
+    expect(previous.status).toBe("awaiting_confirmation")
     expect(current.status).toBe("open")
 
     const thirdFiring = event({
@@ -140,11 +153,57 @@ describe("in-memory incident correlation", () => {
       startedAt: new Date("2026-08-28T12:00:00Z")
     })
     await Effect.runPromise(store.record([thirdFiring]))
-    const superseded = required(await Effect.runPromise(
+    const supersededIncident = required(await Effect.runPromise(
       store.findIncidentById(current.id)
     ))
 
-    expect(superseded.status).toBe("closed_unconfirmed")
+    expect(supersededIncident.status).toBe("awaiting_confirmation")
+    expect((await Effect.runPromise(
+      store.findOccurrencesByIncidentId(current.id)
+    ))[0]?.status).toBe("closed_unconfirmed")
+  })
+
+  it("groups related occurrences and keeps the incident open until all resolve", async () => {
+    const store = makeMemoryEventStore()
+    const availabilityFiring = event()
+    const errorsFiring = event({
+      eventId: "checkout-errors:firing:2026-08-28T10:01:00.000Z",
+      alertFingerprint: "checkout-errors",
+      alertName: "Checkout error rate high",
+      startedAt: new Date("2026-08-28T10:01:00Z")
+    })
+
+    await Effect.runPromise(store.record([errorsFiring, availabilityFiring]))
+    const availabilityStored = required(await Effect.runPromise(
+      store.findByEventId(availabilityFiring.eventId)
+    ))
+    const errorsStored = required(await Effect.runPromise(
+      store.findByEventId(errorsFiring.eventId)
+    ))
+    expect(errorsStored.incidentId).toBe(availabilityStored.incidentId)
+
+    const incidentId = required(Option.fromNullable(availabilityStored.incidentId))
+    expect(await Effect.runPromise(store.findOccurrencesByIncidentId(incidentId))).toHaveLength(2)
+    expect(required(await Effect.runPromise(store.findIncidentById(incidentId))).detectedAt)
+      .toEqual(new Date("2026-08-28T10:00:00Z"))
+
+    await Effect.runPromise(store.record([event({
+      eventId: "checkout:resolved:2026-08-28T10:00:00.000Z",
+      state: "resolved",
+      endedAt: new Date("2026-08-28T10:05:00Z")
+    })]))
+    expect(required(await Effect.runPromise(store.findIncidentById(incidentId))).status).toBe("open")
+
+    await Effect.runPromise(store.record([event({
+      eventId: "checkout-errors:resolved:2026-08-28T10:01:00.000Z",
+      alertFingerprint: "checkout-errors",
+      alertName: "Checkout error rate high",
+      state: "resolved",
+      startedAt: new Date("2026-08-28T10:01:00Z"),
+      endedAt: new Date("2026-08-28T10:06:00Z")
+    })]))
+    expect(required(await Effect.runPromise(store.findIncidentById(incidentId))).status)
+      .toBe("awaiting_confirmation")
   })
 
   it("does not correlate different services or environments", async () => {

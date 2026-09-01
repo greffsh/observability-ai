@@ -194,9 +194,11 @@ curl --header "Authorization: Bearer change-me-webhook" \
   "http://localhost:8080/v1/incidents/UUID-DO-INCIDENTE"
 ```
 
-O incidente informa seu estado (`open`, `resolved` ou `closed_unconfirmed`),
-a identidade do alerta, o início e a resolução conhecida, além de indicar em
-`firingObserved` se o Analyzer observou o disparo.
+O incidente informa seu estado (`open`, `awaiting_confirmation` ou `closed`),
+seu intervalo de atividade e as ocorrências associadas. Cada ocorrência mantém
+a identidade e o ciclo do alerta, incluindo `firingObserved`. Um evento
+`resolved` encerra sua ocorrência; o incidente só deixa de estar `open` quando
+nenhuma ocorrência associada permanece aberta.
 
 Para coletar as evidências e executar a classificação determinística:
 

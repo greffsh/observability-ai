@@ -17,17 +17,25 @@ Episódio contínuo de ativação de uma única instância de alerta, formado po
 _Avoid_: Evento, notificação, incidente
 
 **Incidente**:
-Caso operacional acompanhado pelo Analyzer; nesta etapa, cada incidente corresponde a exatamente uma ocorrência de alerta e não agrupa alertas diferentes.
+Caso operacional acompanhado pelo Analyzer que reúne uma ou mais ocorrências de alerta relacionadas. Seu ciclo de vida não equivale ao ciclo de nenhum alerta individual.
 _Avoid_: Evento, alerta do Grafana
 
-**Incidente reconstruído**:
-Incidente conhecido inicialmente por um evento `resolved`, sem que o Analyzer tenha observado antes seu `firing`; seu ciclo de vida é explicitamente parcial.
-_Avoid_: Incidente inválido, evento órfão
+**Associação de ocorrência**:
+Vínculo auditável entre uma ocorrência de alerta e o incidente operacional ao qual ela fornece evidência.
+_Avoid_: Causalidade, agrupamento de eventos
+
+**Ocorrência reconstruída**:
+Ocorrência conhecida inicialmente por um evento `resolved`, sem que o Analyzer tenha observado antes seu `firing`; seu ciclo de vida é explicitamente parcial.
+_Avoid_: Ocorrência inválida, evento órfão
 
 **Encerramento não confirmado**:
-Fim atribuído a um incidente quando uma nova ocorrência da mesma instância começa sem que o Analyzer tenha recebido a resolução da ocorrência anterior.
+Fim atribuído a uma ocorrência quando uma nova ocorrência da mesma instância começa sem que o Analyzer tenha recebido a resolução da anterior.
 _Avoid_: Resolução, recuperação
 
-**Incidente resolvido**:
-Incidente cuja instância de alerta foi informada como `resolved` pelo Grafana; o termo encerra o ciclo do alerta, sem afirmar recuperação completa do sistema.
-_Avoid_: Sistema recuperado, causa corrigida
+**Incidente aguardando confirmação**:
+Incidente sem ocorrências de alerta abertas conhecidas, mas cuja recuperação operacional ainda não foi confirmada.
+_Avoid_: Incidente resolvido, sistema recuperado, causa corrigida
+
+**Incidente encerrado**:
+Incidente cujo acompanhamento foi finalizado explicitamente por uma pessoa ou política operacional.
+_Avoid_: Alerta resolvido, sinais encerrados

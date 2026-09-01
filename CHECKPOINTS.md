@@ -534,12 +534,14 @@ checkout-api ── métricas ──> Prometheus ──┐
 **Critérios de aceite:**
 
 - [x] Reenvio idêntico não cria outro incidente.
-- [x] Ocorrências compatíveis atualizam o incidente existente.
+- [x] Ocorrências compatíveis são associadas ao mesmo incidente operacional.
 - [x] Serviços ou ambientes diferentes não são correlacionados indevidamente.
-- [x] Um evento resolvido encerra ou atualiza corretamente o incidente correspondente.
+- [x] Um evento resolvido encerra sua ocorrência e o incidente permanece aberto enquanto houver outra ocorrência aberta.
 - [x] Regras possuem testes automatizados.
 
 **Evidências:** CP-06A, CP-06B e CP-06C concluídos; 26 testes e typecheck aprovados; migration e fluxos normal, duplicado e fora de ordem validados no PostgreSQL local em 2026-08-31.
+
+**Revisão pós-entrega:** a DEC-013 substitui a equivalência entre ocorrência e incidente aprovada originalmente em CP-06A/CP-06B. As subseções abaixo preservam o histórico da decisão anterior; o modelo vigente está registrado em CP-06D.
 
 #### CP-06A — Aprovar o domínio e os casos-limite
 
@@ -612,6 +614,20 @@ checkout-api ── métricas ──> Prometheus ──┐
 - [x] `GET /v1/incidents/:incidentId` permite consultar o incidente correlacionado.
 
 **Evidências:** cinco testes automatizados específicos de correlação e 26 testes totais aprovados; typecheck e build concluídos; migration aplicada e schema/índices inspecionados; fluxo real confirmou uma duplicata sem novo incidente e a transição `open → resolved`; cenário fora de ordem confirmou `closed_unconfirmed → resolved` no incidente anterior mantendo o mais novo `open`, em 2026-08-31.
+
+#### CP-06D — Separar ocorrências de incidentes operacionais
+
+**Estado:** `CONCLUÍDO`
+
+- [x] Eventos pertencem a uma ocorrência de alerta identificada por instância e `startsAt`.
+- [x] Uma ocorrência pertence a exatamente um incidente por associação auditável.
+- [x] Um incidente aceita múltiplas ocorrências relacionadas do mesmo serviço e ambiente.
+- [x] A política v1 associa por escopo e proximidade de até 10 minutos somente quando existe um candidato não ambíguo.
+- [x] Resolução parcial mantém o incidente `open`; ausência de ocorrências abertas produz `awaiting_confirmation`.
+- [x] IDs dos incidentes existentes são preservados e eventos legados sem vínculo são reconstruídos.
+- [x] Adapter em memória e PostgreSQL apresentam o mesmo comportamento 1:N.
+
+**Evidências:** migration `0003_alert_occurrences`; tabelas `alert_occurrences` e `incident_occurrences`; 40 testes do Analyzer; backfill real de 17 eventos para 10 ocorrências sem vínculos ausentes; teste PostgreSQL com duas ocorrências no incidente `659b515f-4662-45e4-9a5d-e782ea652b0f`, mantendo `open` após resolução parcial e transitando para `awaiting_confirmation` após a última resolução; backup anterior à migration em `/tmp/grafana-ai-pre-occurrence-model.dump`.
 
 ---
 
@@ -990,7 +1006,7 @@ Usar uma entrada por decisão tomada:
 ### DEC-011 — Identidade e ciclo de vida persistido do incidente
 
 - **Data:** 2026-08-31
-- **Estado:** aceita
+- **Estado:** substituída pela DEC-013
 - **Contexto:** o CP-06 precisava correlacionar eventos repetidos sem agrupar alertas diferentes nem permitir que uma resolução atrasada encerrasse uma ocorrência mais nova.
 - **Decisão:** representar cada ocorrência como um incidente; calcular `correlation_key` a partir da identidade canônica da instância; identificar a ocorrência por `correlation_key + started_at`; usar os estados `open`, `resolved` e `closed_unconfirmed`; registrar `firing_observed`; serializar alterações da mesma instância e impor unicidade no banco.
 - **Alternativas consideradas:** agrupar alertas distintos por janela temporal; usar somente o fingerprint; manter `first_seen_at` e `last_seen_at`; ignorar resoluções sem disparo previamente observado.
@@ -1006,6 +1022,16 @@ Usar uma entrada por decisão tomada:
 - **Alternativas consideradas:** usar a label textual do alerta; deixar a IA escolher a severidade; inferir causalidade pela proximidade de uma mudança; armazenar criticidade apenas no Grafana.
 - **Consequências:** a mesma entrada produz a mesma decisão e cita regras/evidências; serviços ou ambientes não catalogados e sinais insuficientes ficam inconclusivos; mudanças no catálogo ou nos limiares passam por revisão de código.
 - **Checkpoints afetados:** CP-08 e CP-10.
+
+### DEC-013 — Ocorrências separadas de incidentes operacionais
+
+- **Data:** 2026-08-31
+- **Estado:** aceita
+- **Contexto:** representar cada episódio de alerta como incidente fragmentava uma mesma falha em casos independentes e confundia encerramento do alerta com recuperação operacional.
+- **Decisão:** eventos formam ocorrências; cada ocorrência pertence a exatamente um incidente por associação auditável; um incidente agrega uma ou mais ocorrências. A política v1 usa serviço, ambiente e janela de 10 minutos, associa somente diante de um único candidato e mantém o incidente aberto enquanto alguma ocorrência estiver aberta. Sem ocorrências abertas, o incidente fica `awaiting_confirmation`.
+- **Alternativas consideradas:** manter um incidente por ocorrência; associar apenas manualmente; agrupar todo alerta aberto do mesmo serviço; permitir que a IA decida a associação.
+- **Consequências:** um RCA pode analisar vários sintomas da mesma falha; associações ambíguas criam outro incidente em vez de misturar casos; o fechamento do alerta não declara recuperação; a política permanece conservadora, versionada e auditável.
+- **Checkpoints afetados:** CP-06, CP-07, CP-08, CP-09 e CP-11.
 
 ## Histórico de atualizações
 
@@ -1036,3 +1062,4 @@ Usar uma entrada por decisão tomada:
 | 2026-08-31 | CP-07 concluído com pacote limitado e sanitizado de alertas, métricas, logs e codebase, tolerando falhas parciais. | Codex       |
 | 2026-08-31 | CP-08 iniciado como marco da entrega atual; auditoria identificou sinais ausentes para reproduzir CV-03 com responsabilidade. | Codex       |
 | 2026-08-31 | CP-08 e a primeira entrega concluídos com severidade determinística, catálogo versionado e CV-01 a CV-03 testados. | Codex       |
+| 2026-08-31 | CP-06D concluiu a migração 1:N entre incidentes e ocorrências, preservando dados e validando agregação real no PostgreSQL. | Codex       |
