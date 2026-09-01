@@ -78,6 +78,10 @@ const parseClosureBody = (
   return { reason: input.reason as IncidentClosureReason, note }
 }
 
+const assertUnreachable = (x: never): never => {
+  throw new Error(`Unhandled case: ${JSON.stringify(x)}`)
+}
+
 export const buildApp = (options: AppOptions): FastifyInstance => {
   if (options.grafanaWebhookSecret.length === 0) {
     throw new Error("GRAFANA_WEBHOOK_SECRET must not be empty")
@@ -292,7 +296,8 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
         return reply.code(503).send({ error: "persistence_unavailable" })
       }
 
-      switch (result.right.outcome) {
+      const outcome = result.right.outcome
+      switch (outcome) {
         case "closed":
         case "already_closed":
           return reply.code(200).send(closureResponse(result.right.incident))
@@ -305,6 +310,8 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
           })
         case "closure_conflict":
           return reply.code(409).send({ error: "incident_already_closed" })
+        default:
+          return assertUnreachable(outcome)
       }
     }
   )
