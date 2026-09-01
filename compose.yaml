@@ -32,6 +32,8 @@ services:
       ENVIRONMENT: local
       DATABASE_URL: postgresql://${POSTGRES_USER:-analyzer}:${POSTGRES_PASSWORD:-change-me-postgres}@postgres:5432/${POSTGRES_DB:-grafana_ai}
       GRAFANA_WEBHOOK_SECRET: ${GRAFANA_WEBHOOK_SECRET:-change-me-webhook}
+      ANALYZER_OPERATOR_TOKEN: ${ANALYZER_OPERATOR_TOKEN:-change-me-operator}
+      ANALYZER_OPERATOR_ID: ${ANALYZER_OPERATOR_ID:-local-operator}
       ANALYZER_PUBLIC_BASE_URL: http://localhost:${ANALYZER_PORT:-8080}
       PROMETHEUS_URL: http://prometheus:9090
       PROMETHEUS_PUBLIC_URL: http://localhost:${PROMETHEUS_PORT:-9090}

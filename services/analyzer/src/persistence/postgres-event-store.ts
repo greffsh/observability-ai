@@ -2,7 +2,10 @@ import { PgClient } from "@effect/sql-pg"
 import { Effect, Option } from "effect"
 import type { AlertEvent } from "../contracts/alert-event.js"
 import { correlationKeyFor, type AlertOccurrence } from "../domain/alert-occurrence.js"
-import type { Incident } from "../domain/incident.js"
+import type {
+  Incident,
+  IncidentClosureReason
+} from "../domain/incident.js"
 import {
   EventStoreError,
   type EventStore,
@@ -32,6 +35,24 @@ type StoredEventRow = {
 
 type IdRow = { readonly id: string }
 
+type IncidentRow = {
+  readonly id: string
+  readonly status: "open" | "awaiting_confirmation" | "closed"
+  readonly service: string
+  readonly environment: string
+  readonly detectedAt: Date
+  readonly lastActivityAt: Date
+  readonly signalsClearedAt: Date | null
+  readonly closedAt: Date | null
+  readonly closureMethod: "operator" | "policy" | null
+  readonly closureReason: IncidentClosureReason | null
+  readonly closedBy: string | null
+  readonly closureNote: string | null
+  readonly closurePolicyVersion: number | null
+  readonly createdAt: Date
+  readonly updatedAt: Date
+}
+
 const eventPayload = (event: AlertEvent) => ({
   ...event,
   startedAt: event.startedAt.toISOString(),
@@ -60,6 +81,29 @@ const rowToStoredEvent = (row: StoredEventRow): StoredAlertEvent => ({
     annotations: row.annotations,
     generatorUrl: row.generatorUrl
   }
+})
+
+const rowToIncident = (row: IncidentRow): Incident => ({
+  id: row.id,
+  status: row.status,
+  service: row.service,
+  environment: row.environment,
+  detectedAt: row.detectedAt,
+  lastActivityAt: row.lastActivityAt,
+  signalsClearedAt: row.signalsClearedAt,
+  closure: row.closedAt === null || row.closureMethod === null ||
+      row.closureReason === null || row.closedBy === null
+    ? null
+    : {
+        closedAt: row.closedAt,
+        method: row.closureMethod,
+        reason: row.closureReason,
+        closedBy: row.closedBy,
+        note: row.closureNote,
+        policyVersion: row.closurePolicyVersion
+      },
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt
 })
 
 export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.PgClient> =
@@ -119,6 +163,23 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
       FROM alert_events AS event
       LEFT JOIN incident_occurrences AS relation
         ON relation.occurrence_id = event.occurrence_id
+    `
+
+    const incidentSelection = sql`
+      SELECT
+        id, status, service, environment,
+        detected_at AS "detectedAt",
+        last_activity_at AS "lastActivityAt",
+        signals_cleared_at AS "signalsClearedAt",
+        closed_at AS "closedAt",
+        closure_method AS "closureMethod",
+        closure_reason AS "closureReason",
+        closed_by AS "closedBy",
+        closure_note AS "closureNote",
+        closure_policy_version AS "closurePolicyVersion",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+      FROM incidents
     `
 
     return {
@@ -314,19 +375,12 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
         Effect.map((rows) => rows.map(rowToStoredEvent)),
         Effect.mapError((cause) => new EventStoreError({ operation: "find", cause }))
       ),
-      findIncidentById: (incidentId) => sql<Incident>`
-        SELECT
-          id, status, service, environment,
-          detected_at AS "detectedAt",
-          last_activity_at AS "lastActivityAt",
-          signals_cleared_at AS "signalsClearedAt",
-          created_at AS "createdAt",
-          updated_at AS "updatedAt"
-        FROM incidents
+      findIncidentById: (incidentId) => sql<IncidentRow>`
+        ${incidentSelection}
         WHERE id = ${incidentId}
         LIMIT 1
       `.pipe(
-        Effect.map((rows) => Option.fromNullable(rows[0])),
+        Effect.map((rows) => Option.map(Option.fromNullable(rows[0]), rowToIncident)),
         Effect.mapError((cause) => new EventStoreError({ operation: "find", cause }))
       ),
       findOccurrencesByIncidentId: (incidentId) => sql<AlertOccurrence>`
@@ -350,6 +404,76 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
         ORDER BY occurrence.started_at, occurrence.created_at
       `.pipe(
         Effect.mapError((cause) => new EventStoreError({ operation: "find", cause }))
+      ),
+      closeIncident: (command) => sql.withTransaction(
+        Effect.gen(function* () {
+          const rows = yield* sql<IncidentRow>`
+            ${incidentSelection}
+            WHERE id = ${command.incidentId}
+            LIMIT 1
+            FOR UPDATE
+          `
+          const row = rows[0]
+          if (row === undefined) return { outcome: "not_found" as const }
+          const incident = rowToIncident(row)
+
+          if (incident.status === "closed") {
+            const sameClosure = incident.closure !== null &&
+              incident.closure.method === "operator" &&
+              incident.closure.reason === command.reason &&
+              incident.closure.closedBy === command.closedBy &&
+              incident.closure.note === command.note
+            return sameClosure
+              ? { outcome: "already_closed" as const, incident }
+              : { outcome: "closure_conflict" as const, incident }
+          }
+
+          const openOccurrences = yield* sql<IdRow>`
+            SELECT occurrence.id
+            FROM alert_occurrences AS occurrence
+            JOIN incident_occurrences AS relation
+              ON relation.occurrence_id = occurrence.id
+            WHERE relation.incident_id = ${command.incidentId}
+              AND occurrence.status = 'open'
+            LIMIT 1
+          `
+          if (incident.status !== "awaiting_confirmation" || openOccurrences.length > 0) {
+            return { outcome: "not_closable" as const, status: incident.status }
+          }
+
+          yield* sql`
+            UPDATE incidents
+            SET
+              status = 'closed',
+              closed_at = ${command.closedAt},
+              closure_method = 'operator',
+              closure_reason = ${command.reason},
+              closed_by = ${command.closedBy},
+              closure_note = ${command.note},
+              closure_policy_version = NULL,
+              updated_at = ${command.closedAt}
+            WHERE id = ${command.incidentId}
+          `
+
+          return {
+            outcome: "closed" as const,
+            incident: {
+              ...incident,
+              status: "closed" as const,
+              closure: {
+                closedAt: command.closedAt,
+                method: "operator" as const,
+                reason: command.reason,
+                closedBy: command.closedBy,
+                note: command.note,
+                policyVersion: null
+              },
+              updatedAt: command.closedAt
+            }
+          }
+        })
+      ).pipe(
+        Effect.mapError((cause) => new EventStoreError({ operation: "close", cause }))
       )
     }
   })

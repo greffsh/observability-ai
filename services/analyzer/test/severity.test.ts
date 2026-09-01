@@ -15,6 +15,7 @@ const incident: Incident = {
   detectedAt: startedAt,
   lastActivityAt: new Date("2026-08-31T10:05:00Z"),
   signalsClearedAt: new Date("2026-08-31T10:05:00Z"),
+  closure: null,
   createdAt: startedAt,
   updatedAt: new Date("2026-08-31T10:05:00Z")
 }

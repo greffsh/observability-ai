@@ -37,5 +37,5 @@ Incidente sem ocorrências de alerta abertas conhecidas, mas cuja recuperação 
 _Avoid_: Incidente resolvido, sistema recuperado, causa corrigida
 
 **Incidente encerrado**:
-Incidente cujo acompanhamento foi finalizado explicitamente por uma pessoa ou política operacional.
-_Avoid_: Alerta resolvido, sinais encerrados
+Incidente anteriormente aguardando confirmação cujo acompanhamento foi finalizado explicitamente por uma pessoa ou política operacional. Seu encerramento é terminal, não afirma que a causa raiz foi descoberta e não é revertido por eventos atrasados; uma nova falha inicia outro incidente.
+_Avoid_: Alerta resolvido, sinais encerrados, RCA concluído

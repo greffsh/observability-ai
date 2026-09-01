@@ -11,6 +11,11 @@ import type { EvidenceCollector } from "./evidence/contracts.js"
 import { normalizeGrafanaWebhook } from "./ingestion/normalize-grafana-webhook.js"
 import type { EffectRunner } from "./logging.js"
 import type { EventStore } from "./persistence/event-store.js"
+import {
+  incidentClosureReasons,
+  type Incident,
+  type IncidentClosureReason
+} from "./domain/incident.js"
 import type { SeverityAssessor } from "./severity/contracts.js"
 
 type AppOptions = {
@@ -19,6 +24,8 @@ type AppOptions = {
   grafanaWebhookSecret: string
   logger?: FastifyBaseLogger
   now?: () => Date
+  operatorId: string
+  operatorToken: string
   runEffect?: EffectRunner
   severityAssessor: SeverityAssessor
 }
@@ -40,9 +47,46 @@ const isAuthorized = (authorization: string | undefined, secret: string): boolea
   return provided.length === expected.length && timingSafeEqual(provided, expected)
 }
 
+const closureResponse = (incident: Incident) => {
+  if (incident.closure === null) {
+    throw new Error(`Closed incident ${incident.id} is missing closure metadata`)
+  }
+
+  return {
+    incidentId: incident.id,
+    status: incident.status,
+    closedAt: incident.closure.closedAt,
+    closureMethod: incident.closure.method,
+    closureReason: incident.closure.reason,
+    closedBy: incident.closure.closedBy,
+    note: incident.closure.note
+  }
+}
+
+const parseClosureBody = (
+  body: unknown
+): { readonly reason: IncidentClosureReason; readonly note: string | null } | null => {
+  if (typeof body !== "object" || body === null) return null
+  const input = body as { readonly reason?: unknown; readonly note?: unknown }
+  if (
+    typeof input.reason !== "string" ||
+    !incidentClosureReasons.includes(input.reason as IncidentClosureReason)
+  ) return null
+  if (input.note !== undefined && typeof input.note !== "string") return null
+  const note = typeof input.note === "string" ? input.note.trim() : null
+  if (note !== null && (note.length === 0 || note.length > 2_000)) return null
+  return { reason: input.reason as IncidentClosureReason, note }
+}
+
 export const buildApp = (options: AppOptions): FastifyInstance => {
   if (options.grafanaWebhookSecret.length === 0) {
     throw new Error("GRAFANA_WEBHOOK_SECRET must not be empty")
+  }
+  if (options.operatorToken.length === 0) {
+    throw new Error("ANALYZER_OPERATOR_TOKEN must not be empty")
+  }
+  if (options.operatorId.trim().length === 0) {
+    throw new Error("ANALYZER_OPERATOR_ID must not be empty")
   }
 
   const logController = new LogController({ disableRequestLogging: true })
@@ -52,27 +96,31 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
   const now = options.now ?? (() => new Date())
   const runEffect = options.runEffect ?? defaultRunEffect
 
-  const authenticate = async (request: FastifyRequest, reply: FastifyReply) => {
-    if (isAuthorized(request.headers.authorization, options.grafanaWebhookSecret)) {
-      return
-    }
+  const makeAuthenticate = (secret: string, principal: "grafana" | "operator") =>
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      if (isAuthorized(request.headers.authorization, secret)) {
+        return
+      }
 
-    await runEffect(
-      Effect.logWarning("Analyzer authentication failed").pipe(
-        Effect.annotateLogs({
-          event: "analyzer_unauthorized",
-          reqId: request.id,
-          authorization_present: request.headers.authorization !== undefined,
-          authorization_scheme: request.headers.authorization?.split(" ", 1)[0] ?? null
-        })
+      await runEffect(
+        Effect.logWarning("Analyzer authentication failed").pipe(
+          Effect.annotateLogs({
+            event: "analyzer_unauthorized",
+            reqId: request.id,
+            principal,
+            authorization_present: request.headers.authorization !== undefined,
+            authorization_scheme: request.headers.authorization?.split(" ", 1)[0] ?? null
+          })
+        )
       )
-    )
 
-    return reply
-      .header("www-authenticate", "Bearer")
-      .code(401)
-      .send({ error: "unauthorized" })
-  }
+      return reply
+        .header("www-authenticate", "Bearer")
+        .code(401)
+        .send({ error: "unauthorized" })
+    }
+  const authenticate = makeAuthenticate(options.grafanaWebhookSecret, "grafana")
+  const authenticateOperator = makeAuthenticate(options.operatorToken, "operator")
 
   app.get("/health", async () => ({
     status: "ok",
@@ -220,6 +268,44 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
       }
 
       return reply.code(200).send(result.right)
+    }
+  )
+
+  app.put<{ Params: { incidentId: string }; Body: unknown }>(
+    "/v1/incidents/:incidentId/closure",
+    { onRequest: authenticateOperator },
+    async (request, reply) => {
+      const body = parseClosureBody(request.body)
+      if (body === null) {
+        return reply.code(400).send({ error: "invalid_closure" })
+      }
+
+      const result = await runEffect(Effect.either(options.eventStore.closeIncident({
+        incidentId: request.params.incidentId,
+        closedAt: now(),
+        closedBy: options.operatorId.trim(),
+        reason: body.reason,
+        note: body.note
+      })))
+
+      if (Either.isLeft(result)) {
+        return reply.code(503).send({ error: "persistence_unavailable" })
+      }
+
+      switch (result.right.outcome) {
+        case "closed":
+        case "already_closed":
+          return reply.code(200).send(closureResponse(result.right.incident))
+        case "not_found":
+          return reply.code(404).send({ error: "incident_not_found" })
+        case "not_closable":
+          return reply.code(409).send({
+            error: "incident_not_closable",
+            status: result.right.status
+          })
+        case "closure_conflict":
+          return reply.code(409).send({ error: "incident_already_closed" })
+      }
     }
   )
 

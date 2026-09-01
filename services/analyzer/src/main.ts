@@ -17,6 +17,10 @@ const configuration = Config.all({
   port: Config.integer("PORT").pipe(Config.withDefault(8080)),
   databaseUrl: Config.redacted("DATABASE_URL"),
   grafanaWebhookSecret: Config.redacted("GRAFANA_WEBHOOK_SECRET"),
+  operatorToken: Config.redacted("ANALYZER_OPERATOR_TOKEN"),
+  operatorId: Config.string("ANALYZER_OPERATOR_ID").pipe(
+    Config.withDefault("local-operator")
+  ),
   analyzerPublicBaseUrl: Config.string("ANALYZER_PUBLIC_BASE_URL").pipe(
     Config.withDefault("http://localhost:8080")
   ),
@@ -98,6 +102,8 @@ const main = Effect.gen(function* () {
     evidenceCollector,
     eventStore,
     grafanaWebhookSecret: Redacted.value(config.grafanaWebhookSecret),
+    operatorId: config.operatorId,
+    operatorToken: Redacted.value(config.operatorToken),
     logger: logging.logger,
     runEffect: logging.runPromise,
     severityAssessor

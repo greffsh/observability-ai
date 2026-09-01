@@ -629,6 +629,19 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Evidências:** migration `0003_alert_occurrences`; tabelas `alert_occurrences` e `incident_occurrences`; 40 testes do Analyzer; backfill real de 17 eventos para 10 ocorrências sem vínculos ausentes; teste PostgreSQL com duas ocorrências no incidente `659b515f-4662-45e4-9a5d-e782ea652b0f`, mantendo `open` após resolução parcial e transitando para `awaiting_confirmation` após a última resolução; backup anterior à migration em `/tmp/grafana-ai-pre-occurrence-model.dump`.
 
+#### CP-06E — Encerrar incidentes com confirmação operacional
+
+**Estado:** `CONCLUÍDO`
+
+- [x] Somente um incidente em `awaiting_confirmation` pode ser encerrado normalmente.
+- [x] A credencial do operador é distinta da credencial de ingestão do Grafana.
+- [x] O fechamento registra instante, método, razão, identidade e nota opcional.
+- [x] Repetir o mesmo comando é idempotente; tentar substituir a auditoria retorna conflito.
+- [x] Um incidente encerrado permanece terminal diante de eventos atrasados e não participa de novas correlações.
+- [x] O adapter PostgreSQL verifica estado e ocorrências abertas na mesma transação.
+
+**Evidências:** migration `0005_incident_closure`; endpoint autenticado `PUT /v1/incidents/:incidentId/closure`; testes HTTP e do adapter em memória; validação PostgreSQL real dos resultados `200`, `409` e `401`, persistência da auditoria e chegada de `firing` atrasado sem remover o estado `closed`.
+
 ---
 
 ### CP-07 — Coletar um pacote de evidências
@@ -1033,6 +1046,16 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** um RCA pode analisar vários sintomas da mesma falha; associações ambíguas criam outro incidente em vez de misturar casos; o fechamento do alerta não declara recuperação; a política permanece conservadora, versionada e auditável.
 - **Checkpoints afetados:** CP-06, CP-07, CP-08, CP-09 e CP-11.
 
+### DEC-014 — Encerramento operacional explícito e terminal
+
+- **Data:** 2026-09-01
+- **Estado:** aceita
+- **Contexto:** a resolução de todas as ocorrências remove os sinais ativos, mas não comprova por si só que o acompanhamento operacional pode terminar. O Analyzer também precisa impedir que a credencial de ingestão represente falsamente uma decisão humana.
+- **Decisão:** manter o incidente em `awaiting_confirmation` após o último sinal; permitir fechamento manual somente nesse estado, usando credencial própria de operador e auditoria obrigatória. `closed` é terminal: eventos atrasados podem completar ocorrências, mas não reabrem o incidente; uma falha posterior inicia outro incidente. O mesmo comando de fechamento é idempotente e um comando divergente não substitui a auditoria existente.
+- **Alternativas consideradas:** fechar imediatamente no último `resolved`; fechar apenas por tempo sem sinais; permitir fechamento enquanto houver ocorrências abertas; reutilizar a credencial do Grafana; reabrir o mesmo incidente após `closed`.
+- **Consequências:** resolução técnica e decisão operacional permanecem distintas; o fechamento possui autoria verificável; recorrências posteriores preservam a história anterior em outro incidente; uma política automática futura precisará comprovar recuperação e registrar sua versão.
+- **Checkpoints afetados:** CP-06, CP-09, CP-10 e CP-11.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                       | Responsável |
@@ -1063,3 +1086,4 @@ Usar uma entrada por decisão tomada:
 | 2026-08-31 | CP-08 iniciado como marco da entrega atual; auditoria identificou sinais ausentes para reproduzir CV-03 com responsabilidade. | Codex       |
 | 2026-08-31 | CP-08 e a primeira entrega concluídos com severidade determinística, catálogo versionado e CV-01 a CV-03 testados. | Codex       |
 | 2026-08-31 | CP-06D concluiu a migração 1:N entre incidentes e ocorrências, preservando dados e validando agregação real no PostgreSQL. | Codex       |
+| 2026-09-01 | CP-06E concluiu o fechamento manual auditável, com credencial de operador separada e estado `closed` terminal. | Codex       |

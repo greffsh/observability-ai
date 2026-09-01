@@ -108,6 +108,35 @@ describe("in-memory incident correlation", () => {
     expect(occurrences[0]).toMatchObject({ status: "resolved", firingObserved: true })
   })
 
+  it("keeps a closed incident terminal when a late firing completes its occurrence", async () => {
+    const closedAt = new Date("2026-08-28T10:11:00Z")
+    const store = makeMemoryEventStore()
+    const resolved = event({
+      eventId: "checkout:resolved:2026-08-28T10:00:00.000Z",
+      state: "resolved",
+      endedAt: new Date("2026-08-28T10:10:00Z")
+    })
+
+    await Effect.runPromise(store.record([resolved]))
+    const storedResolved = required(await Effect.runPromise(
+      store.findByEventId(resolved.eventId)
+    ))
+    const incidentId = required(Option.fromNullable(storedResolved.incidentId))
+    await Effect.runPromise(store.closeIncident({
+      incidentId,
+      closedAt,
+      closedBy: "test-operator",
+      reason: "recovery_confirmed",
+      note: null
+    }))
+
+    await Effect.runPromise(store.record([event()]))
+    const incident = required(await Effect.runPromise(store.findIncidentById(incidentId)))
+
+    expect(incident.status).toBe("closed")
+    expect(incident.closure).toMatchObject({ closedAt, closedBy: "test-operator" })
+  })
+
   it("keeps a newer episode open when the previous resolution arrives late", async () => {
     const store = makeMemoryEventStore()
     const firstFiring = event()

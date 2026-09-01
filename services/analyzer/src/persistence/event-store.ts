@@ -1,12 +1,30 @@
 import { Data, type Effect, type Option } from "effect"
 import type { AlertEvent } from "../contracts/alert-event.js"
 import type { AlertOccurrence } from "../domain/alert-occurrence.js"
-import type { Incident } from "../domain/incident.js"
+import type {
+  Incident,
+  IncidentClosureReason,
+  IncidentStatus
+} from "../domain/incident.js"
 
 export class EventStoreError extends Data.TaggedError("EventStoreError")<{
-  readonly operation: "find" | "record"
+  readonly operation: "close" | "find" | "record"
   readonly cause: unknown
 }> {}
+
+export type CloseIncidentCommand = {
+  readonly incidentId: string
+  readonly closedAt: Date
+  readonly closedBy: string
+  readonly reason: IncidentClosureReason
+  readonly note: string | null
+}
+
+export type CloseIncidentResult =
+  | { readonly outcome: "closed" | "already_closed"; readonly incident: Incident }
+  | { readonly outcome: "not_found" }
+  | { readonly outcome: "not_closable"; readonly status: IncidentStatus }
+  | { readonly outcome: "closure_conflict"; readonly incident: Incident }
 
 export type RecordAlertEventsResult = {
   readonly insertedEventIds: ReadonlyArray<string>
@@ -37,4 +55,7 @@ export type EventStore = {
   readonly findOccurrencesByIncidentId: (
     incidentId: string
   ) => Effect.Effect<ReadonlyArray<AlertOccurrence>, EventStoreError>
+  readonly closeIncident: (
+    command: CloseIncidentCommand
+  ) => Effect.Effect<CloseIncidentResult, EventStoreError>
 }

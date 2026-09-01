@@ -25,6 +25,8 @@ beforeEach(() => {
     eventStore,
     evidenceCollector,
     grafanaWebhookSecret: "test-webhook-secret",
+    operatorId: "test-operator",
+    operatorToken: "test-operator-token",
     now: () => new Date("2026-08-28T13:21:05Z"),
     severityAssessor: makeSeverityAssessor({
       eventStore,
@@ -158,6 +160,119 @@ describe("Analyzer HTTP API", () => {
     })
   })
 
+  it("closes an incident after its alert occurrences have resolved", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/grafana",
+      headers: { authorization: "Bearer test-webhook-secret" },
+      payload: firingWebhookFixture
+    })
+    await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/grafana",
+      headers: { authorization: "Bearer test-webhook-secret" },
+      payload: {
+        ...firingWebhookFixture,
+        status: "resolved",
+        alerts: [{
+          ...firingWebhookFixture.alerts[0],
+          status: "resolved",
+          endsAt: "2026-08-28T13:21:04Z"
+        }]
+      }
+    })
+
+    const response = await app.inject({
+      method: "PUT",
+      url: "/v1/incidents/memory-incident-1/closure",
+      headers: { authorization: "Bearer test-operator-token" },
+      payload: {
+        reason: "recovery_confirmed",
+        note: "Checkout validated after recovery"
+      }
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toEqual({
+      incidentId: "memory-incident-1",
+      status: "closed",
+      closedAt: "2026-08-28T13:21:05.000Z",
+      closureMethod: "operator",
+      closureReason: "recovery_confirmed",
+      closedBy: "test-operator",
+      note: "Checkout validated after recovery"
+    })
+
+    const repeated = await app.inject({
+      method: "PUT",
+      url: "/v1/incidents/memory-incident-1/closure",
+      headers: { authorization: "Bearer test-operator-token" },
+      payload: {
+        reason: "recovery_confirmed",
+        note: "Checkout validated after recovery"
+      }
+    })
+    expect(repeated.statusCode).toBe(200)
+    expect(repeated.json()).toEqual(response.json())
+
+    const conflicting = await app.inject({
+      method: "PUT",
+      url: "/v1/incidents/memory-incident-1/closure",
+      headers: { authorization: "Bearer test-operator-token" },
+      payload: { reason: "other", note: "Replacement audit" }
+    })
+    expect(conflicting.statusCode).toBe(409)
+    expect(conflicting.json()).toEqual({ error: "incident_already_closed" })
+
+    const incident = await app.inject({
+      method: "GET",
+      url: "/v1/incidents/memory-incident-1",
+      headers: { authorization: "Bearer test-webhook-secret" }
+    })
+    expect(incident.json()).toMatchObject({
+      status: "closed",
+      closure: {
+        method: "operator",
+        reason: "recovery_confirmed",
+        closedBy: "test-operator"
+      }
+    })
+  })
+
+  it("does not authorize incident closure with the Grafana credential", async () => {
+    const response = await app.inject({
+      method: "PUT",
+      url: "/v1/incidents/memory-incident-1/closure",
+      headers: { authorization: "Bearer test-webhook-secret" },
+      payload: { reason: "recovery_confirmed" }
+    })
+
+    expect(response.statusCode).toBe(401)
+    expect(response.json()).toEqual({ error: "unauthorized" })
+  })
+
+  it("refuses to close an incident while an occurrence is open", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/grafana",
+      headers: { authorization: "Bearer test-webhook-secret" },
+      payload: firingWebhookFixture
+    })
+
+    const response = await app.inject({
+      method: "PUT",
+      url: "/v1/incidents/memory-incident-1/closure",
+      headers: { authorization: "Bearer test-operator-token" },
+      payload: { reason: "recovery_confirmed" }
+    })
+
+    expect(response.statusCode).toBe(409)
+    expect(response.json()).toEqual({
+      error: "incident_not_closable",
+      status: "open"
+    })
+  })
+
   it("returns 404 for an unknown incident", async () => {
     const response = await app.inject({
       method: "GET",
@@ -242,7 +357,11 @@ describe("Analyzer HTTP API", () => {
       findByEventId: () => Effect.succeed(Option.none()),
       findByIncidentId: () => Effect.succeed([]),
       findIncidentById: () => Effect.succeed(Option.none()),
-      findOccurrencesByIncidentId: () => Effect.succeed([])
+      findOccurrencesByIncidentId: () => Effect.succeed([]),
+      closeIncident: () => Effect.fail(new EventStoreError({
+        operation: "close",
+        cause: new Error("database unavailable")
+      }))
     }
     const unavailableEvidenceCollector = makeEvidenceCollector({
       eventStore: unavailableStore,
@@ -253,6 +372,8 @@ describe("Analyzer HTTP API", () => {
       eventStore: unavailableStore,
       evidenceCollector: unavailableEvidenceCollector,
       grafanaWebhookSecret: "test-webhook-secret",
+      operatorId: "test-operator",
+      operatorToken: "test-operator-token",
       now: () => new Date("2026-08-28T13:21:05Z"),
       severityAssessor: makeSeverityAssessor({
         eventStore: unavailableStore,

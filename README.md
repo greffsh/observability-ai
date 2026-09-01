@@ -200,6 +200,20 @@ a identidade e o ciclo do alerta, incluindo `firingObserved`. Um evento
 `resolved` encerra sua ocorrência; o incidente só deixa de estar `open` quando
 nenhuma ocorrência associada permanece aberta.
 
+Um operador pode encerrar um incidente em `awaiting_confirmation` usando sua
+credencial própria:
+
+```bash
+curl --request PUT \
+  --header "Authorization: Bearer change-me-operator" \
+  --json '{"reason":"recovery_confirmed","note":"Recuperação validada"}' \
+  "http://localhost:8080/v1/incidents/UUID-DO-INCIDENTE/closure"
+```
+
+O fechamento é idempotente e auditável. Incidentes com ocorrências abertas
+retornam `409`; a credencial do webhook do Grafana não autoriza essa operação.
+Uma ocorrência posterior a um incidente encerrado inicia outro incidente.
+
 Para coletar as evidências e executar a classificação determinística:
 
 ```bash

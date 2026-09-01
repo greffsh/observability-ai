@@ -30,6 +30,7 @@ export const makeMemoryEventStore = (options?: {
   const refreshIncident = (incidentId: string, changedAt: Date): void => {
     const incident = incidents.get(incidentId)
     if (incident === undefined) throw new Error(`Incident ${incidentId} is missing`)
+    if (incident.status === "closed") return
     const related = occurrencesFor(incidentId)
     const hasOpenOccurrence = related.some((occurrence) => occurrence.status === "open")
     const detectedAt = related.reduce(
@@ -79,6 +80,7 @@ export const makeMemoryEventStore = (options?: {
       signalsClearedAt: occurrence.status === "open"
         ? null
         : occurrence.endedAt ?? occurrence.startedAt,
+      closure: null,
       createdAt: changedAt,
       updatedAt: changedAt
     })
@@ -182,6 +184,44 @@ export const makeMemoryEventStore = (options?: {
     ),
     findOccurrencesByIncidentId: (incidentId) => Effect.sync(() =>
       occurrencesFor(incidentId)
-    )
+    ),
+    closeIncident: (command) => Effect.sync(() => {
+      const incident = incidents.get(command.incidentId)
+      if (incident === undefined) return { outcome: "not_found" as const }
+
+      if (incident.status === "closed") {
+        const sameClosure = incident.closure !== null &&
+          incident.closure.method === "operator" &&
+          incident.closure.reason === command.reason &&
+          incident.closure.closedBy === command.closedBy &&
+          incident.closure.note === command.note
+        return sameClosure
+          ? { outcome: "already_closed" as const, incident }
+          : { outcome: "closure_conflict" as const, incident }
+      }
+
+      if (
+        incident.status !== "awaiting_confirmation" ||
+        occurrencesFor(command.incidentId).some((occurrence) => occurrence.status === "open")
+      ) {
+        return { outcome: "not_closable" as const, status: incident.status }
+      }
+
+      const closed: Incident = {
+        ...incident,
+        status: "closed",
+        closure: {
+          closedAt: command.closedAt,
+          method: "operator",
+          reason: command.reason,
+          closedBy: command.closedBy,
+          note: command.note,
+          policyVersion: null
+        },
+        updatedAt: command.closedAt
+      }
+      incidents.set(command.incidentId, closed)
+      return { outcome: "closed" as const, incident: closed }
+    })
   }
 }
