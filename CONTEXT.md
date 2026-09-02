@@ -51,3 +51,11 @@ _Avoid_: Coleta automática de código, evidência do Analyzer
 **RCA assistido**:
 Análise produzida por um agente a partir do contexto do incidente e do checkout disponibilizado pelo operador. Deve separar observações, hipóteses e limitações; não altera o ciclo de vida do incidente por si só.
 _Avoid_: Severidade determinística, encerramento do incidente
+
+**Perfil de serviço**:
+Cadastro operacional que informa como interpretar os sinais de um serviço em cada ambiente, incluindo criticidade, teto de severidade e consultas de impacto disponíveis. Não representa o repositório nem uma instância em execução.
+_Avoid_: Repositório, deployment, instância de serviço
+
+**Sinal de impacto**:
+Medida normalizada do efeito operacional observado durante um incidente, como requisições totais, falhas, disponibilidade ou duração da falha. Sua origem pode variar entre serviços sem alterar as regras que a interpretam.
+_Avoid_: Nome de métrica, alerta, causa raiz

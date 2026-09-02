@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "services": {
+    "checkout-api": {
+      "criticality": "high",
+      "environments": {
+        "local": {
+          "severityCeiling": "critica",
+          "impactQueries": {
+            "totalRequests": "checkout_requests_total{service=\"{{service}}\",environment=\"{{environment}}\"}",
+            "failedRequests": "checkout_requests_total{service=\"{{service}}\",environment=\"{{environment}}\",outcome=\"failure\"}",
+            "failureState": "checkout_failure_mode{service=\"{{service}}\",environment=\"{{environment}}\"}",
+            "availability": "checkout_availability{service=\"{{service}}\",environment=\"{{environment}}\"}",
+            "lastChange": "checkout_last_change_timestamp_seconds{service=\"{{service}}\",environment=\"{{environment}}\"}"
+          }
+        }
+      }
+    }
+  }
+}

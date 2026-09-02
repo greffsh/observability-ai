@@ -698,7 +698,9 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Auditoria dos sinais disponíveis:** `checkout-api` agora distingue `healthy`, `degraded` e `unavailable`, expõe `checkout_availability` e registra `checkout_last_change_timestamp_seconds`. A mudança recente é somente uma observação contextual. A regra crítica depende exclusivamente da indisponibilidade medida e não do texto do alerta nem da proximidade com a mudança.
 
-**Evidências:** módulo `services/analyzer/src/severity`; endpoint autenticado `POST /v1/incidents/:incidentId/severity`; modos e métricas controláveis em `services/checkout-api`; testes automatizados dos cenários CV-01 (`baixa`), CV-02 (`alta`) e CV-03 (`critica`); 43 testes, typecheck e build aprovados; CV-03 integrado validado em 2026-08-31 no incidente `ed67bfda-35d8-4f31-8883-9db414a4515f`, com regra `SERVICE_UNAVAILABLE`, evidência `metrics-3` e mudança recente explicitamente tratada como não causal.
+**Generalização pós-entrega:** o classificador não conhece nomes de métricas de nenhum serviço. Um catálogo externo associa `service + environment` a criticidade, teto e consultas PromQL; a coleta converte os resultados em sinais de impacto normalizados antes de aplicar as regras. A `checkout-api` é o primeiro perfil e um novo serviço pode ser cadastrado sem recompilar o Analyzer. O Alloy recebe logs e métricas OTLP e normaliza `service.name` e `deployment.environment.name` para a identidade usada pelo incidente.
+
+**Evidências:** módulo `services/analyzer/src/severity`; endpoint autenticado `POST /v1/incidents/:incidentId/severity`; modos e métricas controláveis em `services/checkout-api`; testes automatizados dos cenários CV-01 (`baixa`), CV-02 (`alta`) e CV-03 (`critica`); 47 testes, typecheck e build aprovados. Após a generalização, CV-03 foi revalidado no incidente `5db1fa0e-b999-42df-acad-d9cee49731a6`, com regra `SERVICE_UNAVAILABLE`, evidência normalizada `metrics-4` e mudança recente explicitamente tratada como não causal. Logs e métrica OTLP de `connect-external/test` também foram recebidos e consultados no Loki e Prometheus.
 
 ---
 
@@ -1061,6 +1063,16 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** desaparecem as credenciais e configurações de repositório no Analyzer e não há acoplamento com revisão de build. O RCA permanece deliberadamente manual; a fidelidade do checkout passa a ser responsabilidade explícita do operador, e a automação futura só será retomada quando houver uma fonte confiável de proveniência de deployment.
 - **Checkpoints afetados:** CP-07, CP-09, CP-10 e CP-13.
 
+### DEC-016 — Perfis de serviço e sinais de impacto normalizados
+
+- **Data:** 2026-09-02
+- **Estado:** aceita
+- **Contexto:** eventos e incidentes já eram independentes da aplicação de demonstração, mas a coleta e a severidade conheciam diretamente métricas `checkout_*`. Integrar outro serviço exigiria editar o núcleo do Analyzer.
+- **Decisão:** cadastrar criticidade, teto e consultas de impacto por `service + environment` em arquivo externo versionado. O adapter Prometheus rotula cada resultado pelo significado operacional; um módulo o converte em sinais normalizados, e somente esses sinais entram no classificador. Para OTLP, `service.name` e `deployment.environment.name` são normalizados para a identidade canônica do incidente.
+- **Alternativas consideradas:** exigir que todos os serviços renomeiem suas métricas; manter um classificador por serviço; aceitar PromQL enviado no webhook; classificar apenas pelo texto do alerta.
+- **Consequências:** a checkout continua suportada por seu perfil e outros serviços podem entrar por configuração; as consultas são configuração operacional confiável e exigem restart; métricas delta precisam ser convertidas antes do exporter Prometheus estável da PoC; ausência de perfil ou sinal permanece explícita e inconclusiva.
+- **Checkpoints afetados:** CP-07, CP-08, CP-09 e CP-13.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                       | Responsável |
@@ -1092,3 +1104,4 @@ Usar uma entrada por decisão tomada:
 | 2026-08-31 | CP-06D concluiu a migração 1:N entre incidentes e ocorrências, preservando dados e validando agregação real no PostgreSQL. | Codex       |
 | 2026-09-01 | CP-06E concluiu o fechamento manual auditável, com credencial de operador separada e estado `closed` terminal. | Codex       |
 | 2026-09-02 | Integração direta com repositório removida; RCA seguirá por handoff manual para um agente com checkout local explícito. | Codex       |
+| 2026-09-02 | Coleta e severidade generalizadas por perfil de serviço e sinais de impacto; entrada OTLP preparada para serviços externos. | Codex       |

@@ -1,17 +1,8 @@
 import type { Incident } from "../domain/incident.js"
-import type { EvidenceItem, EvidencePackage } from "../evidence/contracts.js"
-import type { ServiceCriticalityCatalog } from "./service-criticality.js"
+import type { EvidencePackage } from "../evidence/contracts.js"
+import { findEnvironmentProfile, type ServiceCatalog } from "../service-catalog.js"
 import type { Severity, SeverityAssessment, SeverityRule } from "./contracts.js"
-
-type MetricSeries = {
-  readonly labels?: Readonly<Record<string, string>>
-  readonly samples?: ReadonlyArray<readonly [number, string]>
-}
-
-type MetricData = {
-  readonly query?: string
-  readonly series?: ReadonlyArray<MetricSeries>
-}
+import { measureImpact } from "./impact-signals.js"
 
 const severityRank: Readonly<Record<Exclude<Severity, "inconclusiva">, number>> = {
   informativa: 0,
@@ -19,75 +10,6 @@ const severityRank: Readonly<Record<Exclude<Severity, "inconclusiva">, number>> 
   media: 2,
   alta: 3,
   critica: 4
-}
-
-const metricEvidence = (
-  evidencePackage: EvidencePackage,
-  metricName: string
-): { item: EvidenceItem; series: ReadonlyArray<MetricSeries> } | null => {
-  for (const item of evidencePackage.evidence) {
-    if (item.source !== "metrics" || typeof item.data !== "object" || item.data === null) continue
-    const data = item.data as MetricData
-    if (data.query?.split("{")[0] === metricName && Array.isArray(data.series)) {
-      return { item, series: data.series }
-    }
-  }
-  return null
-}
-
-const samplesOf = (series: MetricSeries): ReadonlyArray<readonly [number, number]> =>
-  (series.samples ?? [])
-    .map(([timestamp, value]) => [timestamp, Number(value)] as const)
-    .filter(([, value]) => Number.isFinite(value))
-    .sort(([left], [right]) => left - right)
-
-const counterIncrease = (series: MetricSeries): number | null => {
-  const samples = samplesOf(series)
-  if (samples.length < 2) return null
-
-  let increase = 0
-  for (let index = 1; index < samples.length; index += 1) {
-    const previous = samples[index - 1]?.[1]
-    const current = samples[index]?.[1]
-    if (previous === undefined || current === undefined) continue
-    increase += current >= previous ? current - previous : current
-  }
-  return increase
-}
-
-const sumKnown = (values: ReadonlyArray<number | null>): number | null => {
-  const known = values.filter((value): value is number => value !== null)
-  return known.length === 0 ? null : known.reduce((sum, value) => sum + value, 0)
-}
-
-const minimumSample = (series: ReadonlyArray<MetricSeries>): number | null => {
-  const values = series.flatMap((item) => samplesOf(item).map((sample) => sample[1]))
-  return values.length === 0 ? null : Math.min(...values)
-}
-
-const maximumActiveDuration = (series: ReadonlyArray<MetricSeries>): number | null => {
-  let found = false
-  let maximum = 0
-  for (const item of series) {
-    let activeStart: number | null = null
-    for (const [timestamp, value] of samplesOf(item)) {
-      if (value >= 1) {
-        found = true
-        activeStart ??= timestamp
-        maximum = Math.max(maximum, timestamp - activeStart)
-      } else {
-        activeStart = null
-      }
-    }
-  }
-  return found ? maximum : null
-}
-
-const latestChange = (series: ReadonlyArray<MetricSeries>): Date | null => {
-  const values = series.flatMap((item) =>
-    samplesOf(item).map((sample) => sample[1]).filter((value) => value > 0)
-  )
-  return values.length === 0 ? null : new Date(Math.max(...values) * 1_000)
 }
 
 const capSeverity = (
@@ -101,31 +23,18 @@ const capSeverity = (
 export const classifySeverity = (
   incident: Incident,
   evidencePackage: EvidencePackage,
-  catalog: ServiceCriticalityCatalog
+  catalog: ServiceCatalog
 ): SeverityAssessment => {
-  const profile = catalog[incident.service]
-  const environmentPolicy = profile?.environments[incident.environment]
-  const requests = metricEvidence(evidencePackage, "checkout_requests_total")
-  const failureMode = metricEvidence(evidencePackage, "checkout_failure_mode")
-  const availability = metricEvidence(evidencePackage, "checkout_availability")
-  const change = metricEvidence(evidencePackage, "checkout_last_change_timestamp_seconds")
-
-  const allRequestIncreases = requests?.series.map(counterIncrease) ?? []
-  const failedRequestIncreases = requests?.series
-    .filter((series) => series.labels?.outcome === "failure")
-    .map(counterIncrease) ?? []
-  const totalRequests = sumKnown(allRequestIncreases)
-  const failedRequests = sumKnown(failedRequestIncreases)
-  const errorRate = totalRequests !== null && failedRequests !== null && totalRequests > 0
-    ? failedRequests / totalRequests
-    : null
-  const sustainedFailureSeconds = failureMode === null
-    ? null
-    : maximumActiveDuration(failureMode.series)
-  const minimumAvailability = availability === null
-    ? null
-    : minimumSample(availability.series)
-  const lastChangeAt = change === null ? null : latestChange(change.series)
+  const profile = findEnvironmentProfile(catalog, incident.service, incident.environment)
+  const measurement = measureImpact(evidencePackage)
+  const {
+    failedRequests,
+    totalRequests,
+    errorRate,
+    sustainedFailureSeconds,
+    minimumAvailability,
+    lastChangeAt
+  } = measurement.signals
   const changeAgeSeconds = lastChangeAt === null
     ? null
     : (incident.detectedAt.getTime() - lastChangeAt.getTime()) / 1_000
@@ -138,11 +47,11 @@ export const classifySeverity = (
     (limitation) => `${limitation.source}:${limitation.code}`
   )
 
-  if (recentChange === true && change !== null) {
+  if (recentChange === true) {
     observations.push("Uma mudança foi registrada até 10 minutos antes do incidente; isso é contexto, não prova de causa.")
   }
 
-  if (profile === undefined || environmentPolicy === undefined) {
+  if (profile === null) {
     limitations.push("Não há criticidade versionada para o serviço e ambiente do incidente.")
     rules.push({
       code: "INSUFFICIENT_SERVICE_METADATA",
@@ -154,7 +63,7 @@ export const classifySeverity = (
       incidentId: incident.id,
       assessedAt: evidencePackage.collectedAt,
       recommendedSeverity: "inconclusiva",
-      serviceCriticality: profile?.criticality ?? null,
+      serviceCriticality: null,
       signals: { failedRequests, totalRequests, errorRate, sustainedFailureSeconds, minimumAvailability, lastChangeAt, recentChange },
       triggeredRules: rules,
       observations,
@@ -164,11 +73,13 @@ export const classifySeverity = (
 
   let severity: Exclude<Severity, "inconclusiva"> | null = null
   if (minimumAvailability !== null && minimumAvailability <= 0) {
-    severity = profile.criticality === "high" ? "critica" : "alta"
+    severity = profile.service.criticality === "high" ? "critica" : "alta"
     rules.push({
       code: "SERVICE_UNAVAILABLE",
       description: "A métrica de disponibilidade comprovou indisponibilidade do serviço.",
-      evidenceIds: availability === null ? [] : [availability.item.id]
+      evidenceIds: measurement.evidenceIds.availability === undefined
+        ? []
+        : [measurement.evidenceIds.availability]
     })
   } else if (
     failedRequests !== null && failedRequests > 0 &&
@@ -177,29 +88,39 @@ export const classifySeverity = (
     severity = "alta"
     rules.push({
       code: "SUSTAINED_HIGH_ERROR_RATE",
-      description: "Falhas sustentadas ou predominantes afetaram operações de checkout.",
-      evidenceIds: [requests?.item.id, failureMode?.item.id].filter((id): id is string => id !== undefined)
+      description: "Falhas sustentadas ou predominantes afetaram as operações observadas.",
+      evidenceIds: [
+        measurement.evidenceIds.failedRequests,
+        measurement.evidenceIds.failureState
+      ].filter((id): id is string => id !== undefined)
     })
   } else if (failedRequests !== null && failedRequests > 1) {
     severity = "media"
     rules.push({
-      code: "MULTIPLE_CHECKOUT_FAILURES",
-      description: "Mais de uma operação de checkout falhou na janela analisada.",
-      evidenceIds: requests === null ? [] : [requests.item.id]
+      code: "MULTIPLE_REQUEST_FAILURES",
+      description: "Mais de uma operação falhou na janela analisada.",
+      evidenceIds: measurement.evidenceIds.failedRequests === undefined
+        ? []
+        : [measurement.evidenceIds.failedRequests]
     })
   } else if (failedRequests === 1) {
     severity = "baixa"
     rules.push({
-      code: "ISOLATED_CHECKOUT_FAILURE",
-      description: "Uma única falha de checkout foi observada na janela analisada.",
-      evidenceIds: requests === null ? [] : [requests.item.id]
+      code: "ISOLATED_REQUEST_FAILURE",
+      description: "Uma única falha foi observada na janela analisada.",
+      evidenceIds: measurement.evidenceIds.failedRequests === undefined
+        ? []
+        : [measurement.evidenceIds.failedRequests]
     })
   } else if (totalRequests !== null && totalRequests > 0 && minimumAvailability !== null) {
     severity = "informativa"
     rules.push({
       code: "NO_OBSERVED_IMPACT",
       description: "Houve tráfego sem falhas nem indisponibilidade observadas.",
-      evidenceIds: [requests?.item.id, availability?.item.id].filter((id): id is string => id !== undefined)
+      evidenceIds: [
+        measurement.evidenceIds.totalRequests,
+        measurement.evidenceIds.availability
+      ].filter((id): id is string => id !== undefined)
     })
   }
 
@@ -218,8 +139,8 @@ export const classifySeverity = (
     assessedAt: evidencePackage.collectedAt,
     recommendedSeverity: severity === null
       ? "inconclusiva"
-      : capSeverity(severity, environmentPolicy.severityCeiling),
-    serviceCriticality: profile.criticality,
+      : capSeverity(severity, profile.environment.severityCeiling),
+    serviceCriticality: profile.service.criticality,
     signals: { failedRequests, totalRequests, errorRate, sustainedFailureSeconds, minimumAvailability, lastChangeAt, recentChange },
     triggeredRules: rules,
     observations,

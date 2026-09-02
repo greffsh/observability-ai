@@ -1,8 +1,8 @@
 import { Effect, Option } from "effect"
 import type { EvidenceCollector } from "../evidence/contracts.js"
 import type { EventStore } from "../persistence/event-store.js"
+import type { ServiceCatalog } from "../service-catalog.js"
 import { classifySeverity } from "./classify-severity.js"
-import type { ServiceCriticalityCatalog } from "./service-criticality.js"
 import {
   SeverityIncidentNotFoundError,
   SeverityUnavailableError,
@@ -12,7 +12,7 @@ import {
 type SeverityAssessorOptions = {
   readonly eventStore: EventStore
   readonly evidenceCollector: EvidenceCollector
-  readonly catalog: ServiceCriticalityCatalog
+  readonly catalog: ServiceCatalog
 }
 
 export const makeSeverityAssessor = (

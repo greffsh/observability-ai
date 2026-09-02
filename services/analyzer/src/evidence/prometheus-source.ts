@@ -6,6 +6,12 @@ import type {
 } from "./contracts.js"
 import { EvidenceSourceError } from "./contracts.js"
 import { fetchJson } from "./http.js"
+import {
+  findEnvironmentProfile,
+  type ImpactMetricSignal,
+  renderImpactQuery,
+  type ServiceCatalog
+} from "../service-catalog.js"
 
 type PrometheusMatrixResult = {
   readonly metric?: Readonly<Record<string, string>>
@@ -25,10 +31,16 @@ type PrometheusResponse = {
 type PrometheusSourceOptions = {
   readonly baseUrl: string
   readonly publicBaseUrl: string
+  readonly catalog: ServiceCatalog
 }
 
-const promqlString = (value: string): string =>
-  value.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n")
+const signalOrder: ReadonlyArray<ImpactMetricSignal> = [
+  "totalRequests",
+  "failedRequests",
+  "failureState",
+  "availability",
+  "lastChange"
+]
 
 const allowedMetricLabels = new Set([
   "__name__",
@@ -43,13 +55,37 @@ export const makePrometheusEvidenceSource = (
 ): EvidenceSource => ({
   source: "metrics",
   collect: (context) => Effect.gen(function* () {
-    const selector = `service="${promqlString(context.incident.service)}",environment="${promqlString(context.incident.environment)}"`
-    const queries = [
-      `checkout_failure_mode{${selector}}`,
-      `checkout_requests_total{${selector}}`,
-      `checkout_availability{${selector}}`,
-      `checkout_last_change_timestamp_seconds{${selector}}`
-    ]
+    const profile = findEnvironmentProfile(
+      options.catalog,
+      context.incident.service,
+      context.incident.environment
+    )
+    const configuredQueries = profile?.environment.impactQueries
+
+    if (configuredQueries === undefined) {
+      return {
+        evidence: [],
+        limitations: [{
+          source: "metrics",
+          code: "not_configured",
+          description: `No impact queries are configured for ${context.incident.service} in ${context.incident.environment}`
+        }]
+      } satisfies SourceCollection
+    }
+
+    const queries = signalOrder.flatMap((signal) => {
+      const template = configuredQueries[signal]
+      return template === undefined
+        ? []
+        : [{
+            signal,
+            query: renderImpactQuery(
+              template,
+              context.incident.service,
+              context.incident.environment
+            )
+          }]
+    })
     const durationSeconds = Math.max(
       1,
       (context.window.end.getTime() - context.window.start.getTime()) / 1_000
@@ -62,8 +98,9 @@ export const makePrometheusEvidenceSource = (
     const limitations: SourceCollection["limitations"][number][] = []
 
     for (let index = 0; index < queries.length; index += 1) {
-      const query = queries[index]
-      if (query === undefined) continue
+      const configuredQuery = queries[index]
+      if (configuredQuery === undefined) continue
+      const { query, signal } = configuredQuery
 
       const requestUrl = new URL("/api/v1/query_range", options.baseUrl)
       requestUrl.searchParams.set("query", query)
@@ -98,11 +135,11 @@ export const makePrometheusEvidenceSource = (
       evidence.push({
         id: `metrics-${index + 1}`,
         source: "metrics",
-        description: `Prometheus range query for ${query.split("{")[0]}`,
+        description: `Prometheus impact query for ${signal}`,
         reference: reference.toString(),
         interval: context.window,
         untrusted: true,
-        data: { query, stepSeconds: step, series }
+        data: { signal, query, stepSeconds: step, series }
       })
 
       if ((response.warnings?.length ?? 0) > 0 || (response.infos?.length ?? 0) > 0) {

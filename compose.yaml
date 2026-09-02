@@ -38,11 +38,14 @@ services:
       PROMETHEUS_PUBLIC_URL: http://localhost:${PROMETHEUS_PORT:-9090}
       LOKI_URL: http://loki:3100
       LOKI_PUBLIC_URL: http://localhost:${LOKI_PORT:-3100}
+      SERVICE_CATALOG_FILE: /etc/analyzer/service-catalog.json
     ports:
       - "${ANALYZER_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - ./infra/analyzer/service-catalog.json:/etc/analyzer/service-catalog.json:ro
     healthcheck:
       test:
         - CMD
@@ -78,6 +81,7 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --web.enable-lifecycle
+      - --web.enable-remote-write-receiver
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
@@ -125,8 +129,8 @@ services:
       - /etc/alloy/config.alloy
     ports:
       - "${ALLOY_PORT:-12345}:12345"
-      - "4317:4317"
-      - "4318:4318"
+      - "${ALLOY_OTLP_GRPC_PORT:-4317}:4317"
+      - "${ALLOY_OTLP_HTTP_PORT:-4318}:4318"
     volumes:
       - ./infra/alloy/config.alloy:/etc/alloy/config.alloy:ro
       - alloy-data:/var/lib/alloy/data

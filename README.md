@@ -233,6 +233,13 @@ entrega manualmente o contexto do incidente a um agente e aponta, como uma
 entrada separada, o checkout local que o agente poderá analisar. A skill e o
 formato único desse handoff serão implementados no CP-09.
 
+Serviços adicionais são cadastrados em
+`infra/analyzer/service-catalog.json`. O perfil liga métricas próprias a sinais
+de impacto normalizados sem alterar as regras de severidade. A stack também
+recebe logs e métricas OpenTelemetry por OTLP; consulte o
+[guia de onboarding](docs/service-onboarding.md) para identidade, configuração
+e limitações de segurança.
+
 O valor acima é somente o padrão local. Um segredo real não deve ser escrito
 em comandos compartilhados, documentação ou logs.
 

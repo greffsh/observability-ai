@@ -4,9 +4,9 @@ import { buildApp } from "../src/app.ts"
 import { makeEvidenceCollector } from "../src/evidence/evidence-collector.ts"
 import { EventStoreError, type EventStore } from "../src/persistence/event-store.ts"
 import { makeMemoryEventStore } from "../src/persistence/memory-event-store.ts"
-import { serviceCriticalityCatalog } from "../src/severity/service-criticality.ts"
 import { makeSeverityAssessor } from "../src/severity/severity-assessor.ts"
 import { firingWebhookFixture } from "./fixtures/grafana-webhook.ts"
+import { checkoutServiceCatalog } from "./fixtures/service-catalog.ts"
 
 let app: ReturnType<typeof buildApp>
 
@@ -31,7 +31,7 @@ beforeEach(() => {
     severityAssessor: makeSeverityAssessor({
       eventStore,
       evidenceCollector,
-      catalog: serviceCriticalityCatalog
+      catalog: checkoutServiceCatalog
     })
   })
 })
@@ -378,7 +378,7 @@ describe("Analyzer HTTP API", () => {
       severityAssessor: makeSeverityAssessor({
         eventStore: unavailableStore,
         evidenceCollector: unavailableEvidenceCollector,
-        catalog: serviceCriticalityCatalog
+        catalog: checkoutServiceCatalog
       })
     })
 

@@ -5,6 +5,7 @@ import type { EvidenceCollectionContext } from "../src/evidence/contracts.ts"
 import { defaultEvidencePolicy } from "../src/evidence/evidence-collector.ts"
 import { makeLokiEvidenceSource } from "../src/evidence/loki-source.ts"
 import { makePrometheusEvidenceSource } from "../src/evidence/prometheus-source.ts"
+import { checkoutServiceCatalog } from "./fixtures/service-catalog.ts"
 
 const incident: Incident = {
   id: "incident-1",
@@ -52,19 +53,21 @@ describe("evidence source adapters", () => {
     vi.stubGlobal("fetch", fetchMock)
     const source = makePrometheusEvidenceSource({
       baseUrl: "http://prometheus:9090",
-      publicBaseUrl: "http://localhost:9090"
+      publicBaseUrl: "http://localhost:9090",
+      catalog: checkoutServiceCatalog
     })
 
     const result = await Effect.runPromise(source.collect(context))
     const requestUrl = fetchMock.mock.calls[0]?.[0] as URL
 
-    expect(fetchMock).toHaveBeenCalledTimes(4)
+    expect(fetchMock).toHaveBeenCalledTimes(5)
     expect(requestUrl.origin).toBe("http://prometheus:9090")
     expect(requestUrl.searchParams.get("limit")).toBe("20")
     expect(result.evidence[0]).toMatchObject({
       source: "metrics",
       reference: expect.stringContaining("http://localhost:9090/api/v1/query_range"),
       data: {
+        signal: "totalRequests",
         series: [{
           labels: {
             __name__: "checkout_failure_mode",
@@ -77,6 +80,48 @@ describe("evidence source adapters", () => {
     })
     expect(result.evidence[0]?.data).not.toMatchObject({
       series: [{ labels: { instance: expect.anything() } }]
+    })
+  })
+
+  it("uses a configured impact query for a different service without code changes", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      status: "success",
+      data: { resultType: "matrix", result: [] }
+    }), { headers: { "content-type": "application/json" } }))
+    vi.stubGlobal("fetch", fetchMock)
+    const source = makePrometheusEvidenceSource({
+      baseUrl: "http://prometheus:9090",
+      publicBaseUrl: "http://localhost:9090",
+      catalog: {
+        schemaVersion: 1,
+        services: {
+          connect: {
+            criticality: "medium",
+            environments: {
+              production: {
+                severityCeiling: "alta",
+                impactQueries: {
+                  availability: "connect_up{service=\"{{service}}\",environment=\"{{environment}}\"}"
+                }
+              }
+            }
+          }
+        }
+      }
+    })
+
+    const result = await Effect.runPromise(source.collect({
+      ...context,
+      incident: { ...incident, service: "connect", environment: "production" }
+    }))
+    const requestUrl = fetchMock.mock.calls[0]?.[0] as URL
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(requestUrl.searchParams.get("query")).toBe(
+      "connect_up{service=\"connect\",environment=\"production\"}"
+    )
+    expect(result.evidence[0]).toMatchObject({
+      data: { signal: "availability" }
     })
   })
 

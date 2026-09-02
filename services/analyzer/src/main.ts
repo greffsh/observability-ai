@@ -8,7 +8,7 @@ import { makeLokiEvidenceSource } from "./evidence/loki-source.js"
 import { makePrometheusEvidenceSource } from "./evidence/prometheus-source.js"
 import { makeApplicationLogging } from "./logging.js"
 import { makePostgresEventStore } from "./persistence/postgres-event-store.js"
-import { serviceCriticalityCatalog } from "./severity/service-criticality.js"
+import { loadServiceCatalog } from "./service-catalog.js"
 import { makeSeverityAssessor } from "./severity/severity-assessor.js"
 
 const configuration = Config.all({
@@ -33,6 +33,9 @@ const configuration = Config.all({
   ),
   lokiPublicUrl: Config.string("LOKI_PUBLIC_URL").pipe(
     Config.withDefault("http://localhost:3100")
+  ),
+  serviceCatalogFile: Config.string("SERVICE_CATALOG_FILE").pipe(
+    Config.withDefault("/etc/analyzer/service-catalog.json")
   )
 })
 
@@ -64,13 +67,15 @@ const main = Effect.gen(function* () {
   const eventStore = yield* Effect.promise(() =>
     databaseRuntime.runPromise(makePostgresEventStore)
   )
+  const serviceCatalog = yield* loadServiceCatalog(config.serviceCatalogFile)
   const evidenceCollector = makeEvidenceCollector({
     eventStore,
     analyzerPublicBaseUrl: config.analyzerPublicBaseUrl,
     sources: [
       makePrometheusEvidenceSource({
         baseUrl: config.prometheusUrl,
-        publicBaseUrl: config.prometheusPublicUrl
+        publicBaseUrl: config.prometheusPublicUrl,
+        catalog: serviceCatalog
       }),
       makeLokiEvidenceSource({
         baseUrl: config.lokiUrl,
@@ -81,7 +86,7 @@ const main = Effect.gen(function* () {
   const severityAssessor = makeSeverityAssessor({
     eventStore,
     evidenceCollector,
-    catalog: serviceCriticalityCatalog
+    catalog: serviceCatalog
   })
 
   const app = buildApp({
