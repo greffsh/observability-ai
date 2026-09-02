@@ -80,10 +80,10 @@ Esses itens podem ser promovidos ao escopo após a validação do núcleo da PoC
 | RF-11 | Aplicar regras configuráveis de roteamento sem delegar a decisão final exclusivamente ao modelo. | Obrigatório | PENDENTE |
 | RF-12 | Enviar a análise para pelo menos um destino de notificação.                                      | Obrigatório | PENDENTE |
 | RF-13 | Persistir incidente, eventos correlacionados, evidências, análise e resultado do envio.          | Obrigatório | PENDENTE |
-| RF-14 | Registrar modelo utilizado, consumo de tokens, duração e custo estimado da análise.              |   Desejável | PENDENTE |
+| RF-14 | Registrar, quando disponíveis, o agente/modelo utilizado, duração e custo estimado da análise.   |   Desejável | PENDENTE |
 | RF-15 | Permitir reanalisar um incidente de forma controlada.                                            |   Desejável | PENDENTE |
 | RF-16 | Registrar feedback humano sobre severidade e utilidade do RCA.                                   |   Desejável | PENDENTE |
-| RF-17 | Consultar trechos da revisão implantada da codebase e preservá-los como evidências do RCA.         | Obrigatório | PENDENTE |
+| RF-17 | Entregar o contexto do incidente ao agente sem acoplar o Analyzer ao repositório analisado.       | Obrigatório | PENDENTE |
 
 ### Requisitos não funcionais
 
@@ -130,15 +130,15 @@ O formato definitivo e os nomes dos campos ainda serão decididos, mas essas inf
 | DT-02 | Linguagem do Analyzer                       | TypeScript                                                 | CP-04                     | DECIDIDO |
 | DT-03 | Banco da PoC                                | PostgreSQL                                                 | CP-05                     | DECIDIDO |
 | DT-04 | Fontes de observabilidade locais            | Logs + métricas; traces adiados                            | CP-03                     | DECIDIDO |
-| DT-05 | Provedor e modelo de IA                     | A definir                                                  | CP-09                     | PENDENTE |
-| DT-06 | Estratégia de acesso ao modelo              | API direta; gateway interno; abstração própria             | CP-09                     | PENDENTE |
+| DT-05 | Agente e modelo de IA                       | Escolhidos pelo operador no momento da análise             | CP-09                     | DECIDIDO |
+| DT-06 | Estratégia de acesso ao modelo              | Execução manual por skill; sem cliente de IA no Analyzer   | CP-09                     | DECIDIDO |
 | DT-07 | Canal inicial de notificação                | Webhook local enviado diretamente pelo Analyzer            | CP-11                     | DECIDIDO |
 | DT-08 | Taxonomia de severidade                     | Informativa, baixa, média, alta, crítica e inconclusiva     | CP-08                     | DECIDIDO |
 | DT-09 | Metadados de criticidade dos serviços       | Catálogo versionado por serviço e ambiente                  | CP-08                     | DECIDIDO |
 | DT-10 | Política de retenção de payloads e análises | A definir                                                  | Antes de usar dados reais | PENDENTE |
 | DT-11 | Framework do Analyzer                       | Effect estável com adoção controlada                       | CP-04                     | DECIDIDO |
 | DT-12 | Framework HTTP                              | Fastify nas aplicações TypeScript                          | CP-03                     | DECIDIDO |
-| DT-13 | Acesso à codebase                           | Adapter read-only por API/CLI na revisão implantada        | CP-07                     | DECIDIDO |
+| DT-13 | Acesso à codebase                           | Repositório local apontado explicitamente ao agente        | CP-09                     | DECIDIDO |
 
 ## Inventário preliminar de contas e credenciais
 
@@ -151,9 +151,8 @@ O formato definitivo e os nomes dos campos ainda serão decididos, mas essas inf
 | Loki | Não | Nenhum nativo na configuração local proposta | Não expor publicamente; Loki não fornece camada de autenticação embutida. |
 | Grafana Alloy | Não | Nenhum | Permissões de coleta devem ser limitadas às fontes necessárias. |
 | PostgreSQL | Não | Usuário e senha próprios do Analyzer | Segredos locais gerados para a PoC e não versionados. |
-| Analyzer | Não | Segredo interno para chamadas recebidas | Credencial do provedor de IA é injetada somente no Analyzer. |
-| Provedor de IA externo | Sim, quando a chamada real for habilitada | Chave de API restrita ao projeto da PoC | Provedor e modelo ainda pendentes em DT-05 e DT-06. |
-| GitHub ou GitLab | Sim, quando repositórios privados forem consultados | GitHub App ou token de projeto/deploy com leitura mínima | Acesso limitado aos repositórios necessários e sem permissão de escrita. |
+| Analyzer | Não | Segredos internos para chamadas recebidas e fechamento operacional | Não recebe credencial de repositório nem de provedor de IA. |
+| Agente de RCA | Depende da ferramenta escolhida pelo operador | Fora do runtime do Analyzer | Recebe o pacote do incidente e acesso explícito a um checkout local. |
 | Canal de chat corporativo | Não no primeiro corte | Futuramente, webhook ou credencial de bot | O primeiro destino será um receptor local. |
 
 Os nomes dos segredos serão definidos no CP-02 e documentados em `.env.example` sem valores reais. Nenhuma chave administrativa de organização deve ser utilizada em tempo de execução quando uma chave restrita ao projeto for suficiente.
@@ -184,7 +183,7 @@ Os nomes dos segredos serão definidos no CP-02 e documentados em `.env.example`
 **Critérios confirmados:**
 
 - considerar uma análise útil quando ela identifica corretamente o impacto observado, separa fatos de hipóteses, cita evidências consultáveis e sugere ao menos uma próxima ação segura;
-- exigir que os três cenários controlados percorram o fluxo completo sem intervenção manual entre o alerta e a notificação;
+- exigir que os três cenários controlados percorram automaticamente o fluxo até a montagem do contexto e usem um handoff operacional explícito para o RCA;
 - exigir classificação compatível com o resultado esperado nos três cenários controlados;
 - exigir que eventos duplicados resultem em um único incidente e não gerem notificações repetidas;
 - usar inicialmente `até 120 segundos` como alvo exploratório entre o recebimento do webhook e a entrega da notificação;
@@ -229,12 +228,11 @@ checkout-api ── métricas ──> Prometheus ──┐
                                            └────> Analyzer
                                            │
                                            ├── consulta Prometheus e Loki
-                                           ├── chama o provedor de IA
                                            ├── persiste no PostgreSQL
-                                           └── notifica por um adaptador
-                                                      │
+                                           └── expõe contexto e severidade
+                                                      │ handoff manual
                                                       v
-                                         receptor local de notificações
+                                         agente de RCA + checkout local
 ```
 
 **Componentes propostos:**
@@ -244,7 +242,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 - Prometheus para métricas;
 - Loki para logs;
 - Grafana Alloy para coleta e encaminhamento dos logs;
-- Analyzer como aplicação independente, com interface própria para o provedor de IA;
+- Analyzer como aplicação independente, sem acesso ao repositório nem cliente de IA neste corte;
 - PostgreSQL como persistência e fila durável inicial do Analyzer;
 - aplicação genérica `checkout-api` com modos de falha controlados;
 - receptor local de webhook como destino inicial, sem integração externa;
@@ -648,7 +646,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Estado:** `CONCLUÍDO`
 
-**Objetivo:** buscar contexto relacionado ao incidente, inclusive a revisão implantada da codebase, sem depender ainda de IA.
+**Objetivo:** buscar contexto observável relacionado ao incidente, sem depender de IA nem acessar a codebase.
 
 **Entregáveis:**
 
@@ -656,20 +654,17 @@ checkout-api ── métricas ──> Prometheus ──┐
 - delimitação de janela temporal e serviço;
 - pacote estruturado de evidências;
 - limites de volume, timeout e falhas parciais.
-- mapeamento entre serviço, repositório e commit implantado;
-- adapter read-only controlado para GitHub ou GitLab, sem execução arbitrária de comandos pelo modelo.
 
 **Critérios de aceite:**
 
-- [x] O pacote contém o alerta e contexto de logs, métricas e codebase, se disponíveis.
+- [x] O pacote contém o alerta e contexto de logs e métricas, se disponíveis.
 - [x] Cada evidência informa origem, intervalo e referência consultável.
-- [x] Evidência de código informa repositório, commit, arquivo e linhas consultadas.
 - [x] Uma fonte indisponível é registrada como limitação sem invalidar todo o pacote.
-- [x] Conteúdo é sanitizado antes de ficar disponível para o modelo.
+- [x] Conteúdo é sanitizado antes de ser entregue a um consumidor externo.
 
-**Evidências:** módulo `services/analyzer/src/evidence`; endpoint autenticado `POST /v1/incidents/:incidentId/evidence`; adapters limitados para Prometheus, Loki e GitHub; pesquisa `docs/research/cp07-evidence-source-apis.md`; 33 testes e typecheck aprovados em 2026-08-31.
+**Evidências:** módulo `services/analyzer/src/evidence`; endpoint autenticado `POST /v1/incidents/:incidentId/evidence`; adapters limitados para Prometheus e Loki; pesquisa `docs/research/cp07-evidence-source-apis.md`; testes e typecheck aprovados.
 
-**Limitação aceita para a PoC:** o commit implantado da `checkout-api` é informado manualmente por `CHECKOUT_API_REVISION` e deve ser um SHA completo. Uma implantação futura deve obter essa revisão dos metadados do artefato ou do sistema de deployment para impedir divergência entre a configuração e o código executado.
+**Revisão de escopo em 2026-09-02:** a integração direta com repositório foi removida. Código não é uma fonte de evidência do Analyzer; no CP-09, o operador fornecerá separadamente um checkout local ao agente de RCA.
 
 ---
 
@@ -703,7 +698,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Auditoria dos sinais disponíveis:** `checkout-api` agora distingue `healthy`, `degraded` e `unavailable`, expõe `checkout_availability` e registra `checkout_last_change_timestamp_seconds`. A mudança recente é somente uma observação contextual. A regra crítica depende exclusivamente da indisponibilidade medida e não do texto do alerta nem da proximidade com a mudança.
 
-**Evidências:** módulo `services/analyzer/src/severity`; endpoint autenticado `POST /v1/incidents/:incidentId/severity`; modos e métricas controláveis em `services/checkout-api`; testes automatizados dos cenários CV-01 (`baixa`), CV-02 (`alta`) e CV-03 (`critica`); 44 testes, typecheck e build aprovados; CV-03 integrado validado em 2026-08-31 no incidente `ed67bfda-35d8-4f31-8883-9db414a4515f`, com regra `SERVICE_UNAVAILABLE`, evidência `metrics-3` e mudança recente explicitamente tratada como não causal.
+**Evidências:** módulo `services/analyzer/src/severity`; endpoint autenticado `POST /v1/incidents/:incidentId/severity`; modos e métricas controláveis em `services/checkout-api`; testes automatizados dos cenários CV-01 (`baixa`), CV-02 (`alta`) e CV-03 (`critica`); 43 testes, typecheck e build aprovados; CV-03 integrado validado em 2026-08-31 no incidente `ed67bfda-35d8-4f31-8883-9db414a4515f`, com regra `SERVICE_UNAVAILABLE`, evidência `metrics-3` e mudança recente explicitamente tratada como não causal.
 
 ---
 
@@ -711,26 +706,26 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Estado:** `PENDENTE`
 
-**Objetivo:** converter o pacote de evidências em uma análise estruturada e responsável.
+**Objetivo:** validar um RCA assistido manualmente, entregando ao agente o contexto do incidente e, separadamente, um checkout local escolhido pelo operador.
 
 **Entregáveis:**
 
-- contrato de entrada e saída do Analyzer;
-- prompt e instruções versionados;
-- validação estrutural da resposta;
+- contrato único de handoff com incidente, ocorrências, evidências e severidade;
+- skill e instruções versionadas para gerar o RCA;
+- mecanismo simples para exportar o contexto e apontar o checkout local ao agente;
+- contrato estruturado de saída do RCA;
 - suporte explícito a contexto insuficiente;
-- implementação substituível do cliente de modelo.
 
 **Critérios de aceite:**
 
 - [ ] A resposta atende ao contrato mínimo do RCA.
-- [ ] Afirmações relevantes citam evidências fornecidas.
-- [ ] O modelo não recebe segredos nem campos definidos como sensíveis.
-- [ ] Evidência contendo instruções maliciosas não altera a política do Analyzer.
-- [ ] Saída inválida ou indisponibilidade do modelo gera falha controlada.
-- [ ] Existe modo de teste com resposta simulada.
+- [ ] Afirmações observacionais citam o pacote; conclusões sobre código citam arquivo e linha do checkout consultado.
+- [ ] O pacote não contém segredos, credenciais de repositório ou conteúdo de código.
+- [ ] Evidência contendo instruções maliciosas é tratada como dado, não como instrução ao agente.
+- [ ] O agente declara quando o contexto ou o checkout são insuficientes.
+- [ ] A execução manual é reproduzível a partir de um incidente controlado e um caminho de repositório explícito.
 
-**Decisões necessárias:** DT-05 e DT-06.
+**Decisões:** DT-05, DT-06 e DT-13 concluídas pela DEC-015.
 
 **Evidências:** _a preencher_
 
@@ -986,12 +981,12 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** queries, transações e falhas integram-se ao Effect; o schema físico permanece visível; mudanças exigem migrations incrementais; correlação fica no CP-06.
 - **Checkpoints afetados:** CP-05 e CP-06.
 
-### DEC-008 — Codebase como fonte de evidência
+### DEC-008 — Codebase remota como fonte de evidência
 
 - **Data:** 2026-08-28
-- **Estado:** aceita
+- **Estado:** substituída pela DEC-015
 - **Contexto:** um RCA útil pode precisar confrontar logs e métricas com o código realmente executado pelo serviço.
-- **Decisão:** consultar GitHub ou GitLab por um adapter read-only controlado, sempre que possível no commit implantado; o modelo não poderá executar comandos CLI arbitrários.
+- **Decisão:** consultar um provedor remoto por um adapter read-only controlado, sempre que possível na revisão implantada; o modelo não poderia executar comandos CLI arbitrários.
 - **Alternativas consideradas:** não consultar código; usar sempre a branch principal; entregar um shell irrestrito ao modelo.
 - **Consequências:** evidências poderão citar repositório, commit, arquivo e linhas; será necessário mapear serviço para repositório/revisão e fornecer uma credencial mínima de leitura.
 - **Checkpoints afetados:** CP-07, CP-09 e CP-10.
@@ -1056,6 +1051,16 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** resolução técnica e decisão operacional permanecem distintas; o fechamento possui autoria verificável; recorrências posteriores preservam a história anterior em outro incidente; uma política automática futura precisará comprovar recuperação e registrar sua versão.
 - **Checkpoints afetados:** CP-06, CP-09, CP-10 e CP-11.
 
+### DEC-015 — Handoff manual para o agente de RCA
+
+- **Data:** 2026-09-02
+- **Estado:** aceita
+- **Contexto:** acoplar o Analyzer a um provedor remoto exigia credencial, catálogo de repositórios e identificação confiável da revisão implantada antes de haver uma necessidade comprovada de automação. Para a etapa atual, o operador já pode escolher o repositório correto e supervisionar a análise.
+- **Decisão:** o Analyzer produzirá apenas o contexto observável e a severidade do incidente. O operador entregará esse pacote a um agente por meio de uma skill e apontará separadamente um checkout local. O acesso ao código pertence à sessão do agente, não ao runtime do Analyzer nem ao contrato de evidências.
+- **Alternativas consideradas:** manter o adapter remoto; clonar automaticamente a branch principal; informar a revisão no build; gerar o RCA diretamente pelo Analyzer.
+- **Consequências:** desaparecem as credenciais e configurações de repositório no Analyzer e não há acoplamento com revisão de build. O RCA permanece deliberadamente manual; a fidelidade do checkout passa a ser responsabilidade explícita do operador, e a automação futura só será retomada quando houver uma fonte confiável de proveniência de deployment.
+- **Checkpoints afetados:** CP-07, CP-09, CP-10 e CP-13.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                       | Responsável |
@@ -1076,14 +1081,14 @@ Usar uma entrada por decisão tomada:
 | 2026-08-28 | CP-04 e CP-04C concluídos com alerta real firing/resolved entregue pelo Grafana. | Codex       |
 | 2026-08-28 | CP-05 iniciado; CP-05A registra o modelo mínimo de persistência para auditoria. | Codex       |
 | 2026-08-28 | CP-05A e CP-05B concluídos com schema PostgreSQL e migrations idempotentes. | Codex       |
-| 2026-08-28 | Acesso read-only à revisão implantada da codebase adicionado ao CP-07. | Codex       |
 | 2026-08-28 | Logs do Analyzer padronizados em Effect com sink Pino assíncrono e flush gracioso. | Codex       |
 | 2026-08-28 | CP-05 e CP-05C concluídos com persistência, idempotência e consulta de eventos. | Codex       |
 | 2026-08-28 | CP-06A iniciado; incidentes permanecem separados por ocorrência e resolução órfã reconstrói um incidente parcial. | Codex       |
 | 2026-08-28 | CP-06A concluído com identidade, estados e casos-limite aprovados; CP-06B aberto para auditoria do schema. | Codex       |
 | 2026-08-31 | CP-06 concluído com modelo persistido, correlação transacional, ciclo de vida, consulta e testes de eventos fora de ordem. | Codex       |
-| 2026-08-31 | CP-07 concluído com pacote limitado e sanitizado de alertas, métricas, logs e codebase, tolerando falhas parciais. | Codex       |
+| 2026-08-31 | CP-07 concluído com pacote limitado e sanitizado de alertas, métricas e logs, tolerando falhas parciais. | Codex       |
 | 2026-08-31 | CP-08 iniciado como marco da entrega atual; auditoria identificou sinais ausentes para reproduzir CV-03 com responsabilidade. | Codex       |
 | 2026-08-31 | CP-08 e a primeira entrega concluídos com severidade determinística, catálogo versionado e CV-01 a CV-03 testados. | Codex       |
 | 2026-08-31 | CP-06D concluiu a migração 1:N entre incidentes e ocorrências, preservando dados e validando agregação real no PostgreSQL. | Codex       |
 | 2026-09-01 | CP-06E concluiu o fechamento manual auditável, com credencial de operador separada e estado `closed` terminal. | Codex       |
+| 2026-09-02 | Integração direta com repositório removida; RCA seguirá por handoff manual para um agente com checkout local explícito. | Codex       |

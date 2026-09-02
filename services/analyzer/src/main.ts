@@ -1,13 +1,11 @@
 import { NodeRuntime } from "@effect/platform-node"
 import { PgClient } from "@effect/sql-pg"
-import { Config, Effect, ManagedRuntime, Option, Redacted } from "effect"
+import { Config, Effect, ManagedRuntime, Redacted } from "effect"
 import { buildApp } from "./app.js"
 import { migrateDatabase } from "./database/migrate.js"
 import { makeEvidenceCollector } from "./evidence/evidence-collector.js"
-import { makeGitHubCodeEvidenceSource } from "./evidence/github-code-source.js"
 import { makeLokiEvidenceSource } from "./evidence/loki-source.js"
 import { makePrometheusEvidenceSource } from "./evidence/prometheus-source.js"
-import { makeServiceCatalog } from "./evidence/service-catalog.js"
 import { makeApplicationLogging } from "./logging.js"
 import { makePostgresEventStore } from "./persistence/postgres-event-store.js"
 import { serviceCriticalityCatalog } from "./severity/service-criticality.js"
@@ -35,11 +33,7 @@ const configuration = Config.all({
   ),
   lokiPublicUrl: Config.string("LOKI_PUBLIC_URL").pipe(
     Config.withDefault("http://localhost:3100")
-  ),
-  checkoutApiRevision: Config.string("CHECKOUT_API_REVISION").pipe(
-    Config.withDefault("6d8eb76adf7979653ad5db5c9f54f329abc95e71")
-  ),
-  githubToken: Config.option(Config.redacted("GITHUB_TOKEN"))
+  )
 })
 
 const service = process.env.SERVICE_NAME ?? "analyzer"
@@ -70,10 +64,6 @@ const main = Effect.gen(function* () {
   const eventStore = yield* Effect.promise(() =>
     databaseRuntime.runPromise(makePostgresEventStore)
   )
-  const githubToken = Option.map(
-    config.githubToken,
-    Redacted.value
-  ).pipe(Option.getOrUndefined)
   const evidenceCollector = makeEvidenceCollector({
     eventStore,
     analyzerPublicBaseUrl: config.analyzerPublicBaseUrl,
@@ -85,10 +75,6 @@ const main = Effect.gen(function* () {
       makeLokiEvidenceSource({
         baseUrl: config.lokiUrl,
         publicBaseUrl: config.lokiPublicUrl
-      }),
-      makeGitHubCodeEvidenceSource({
-        catalog: makeServiceCatalog(config.checkoutApiRevision),
-        ...(githubToken === undefined ? {} : { token: githubToken })
       })
     ]
   })

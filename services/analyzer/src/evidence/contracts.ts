@@ -1,7 +1,7 @@
 import { Data, type Effect } from "effect"
 import type { Incident } from "../domain/incident.js"
 
-export type EvidenceSourceName = "alert" | "logs" | "metrics" | "codebase"
+export type EvidenceSourceName = "alert" | "logs" | "metrics"
 export type ExternalEvidenceSourceName = Exclude<EvidenceSourceName, "alert">
 
 export type EvidenceInterval = {
@@ -43,8 +43,6 @@ export type EvidencePolicy = {
   readonly maxLogEntries: number
   readonly maxMetricPoints: number
   readonly maxMetricSeries: number
-  readonly maxCodeFiles: number
-  readonly maxCodeLinesPerFile: number
   readonly maxStringLength: number
 }
 

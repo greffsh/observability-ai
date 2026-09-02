@@ -227,6 +227,12 @@ calculados, as regras acionadas, observações e limitações, além do
 `evidencePackage` usado na decisão. A mudança recente é relatada como contexto;
 ela não é usada como prova de causa.
 
+Neste estágio, esse é o limite do fluxo automatizado. O Analyzer não acessa
+repositórios e não chama um modelo de IA. Para produzir um RCA, o operador
+entrega manualmente o contexto do incidente a um agente e aponta, como uma
+entrada separada, o checkout local que o agente poderá analisar. A skill e o
+formato único desse handoff serão implementados no CP-09.
+
 O valor acima é somente o padrão local. Um segredo real não deve ser escrito
 em comandos compartilhados, documentação ou logs.
 

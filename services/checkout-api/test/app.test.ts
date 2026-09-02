@@ -79,12 +79,12 @@ describe("checkout-api", () => {
   it("records an explicit change marker without claiming causality", async () => {
     const changedAt = new Date("2026-08-31T12:00:00.000Z")
     await app.close()
-    app = buildApp({ now: () => changedAt, sourceRevision: "abc123" })
+    app = buildApp({ now: () => changedAt })
 
     const change = await app.inject({ method: "POST", url: "/control/change" })
     const metrics = await app.inject({ method: "GET", url: "/metrics" })
 
-    expect(change.json()).toEqual({ changedAt: changedAt.toISOString(), revision: "abc123" })
+    expect(change.json()).toEqual({ changedAt: changedAt.toISOString() })
     expect(metrics.body).toContain(
       `checkout_last_change_timestamp_seconds{service="checkout-api",environment="local"} ${changedAt.getTime() / 1_000}`
     )

@@ -20,8 +20,6 @@ export const defaultEvidencePolicy: EvidencePolicy = {
   maxLogEntries: 50,
   maxMetricPoints: 121,
   maxMetricSeries: 20,
-  maxCodeFiles: 2,
-  maxCodeLinesPerFile: 80,
   maxStringLength: 4_096
 }
 

@@ -11,14 +11,12 @@ type AppOptions = {
   logger?: boolean
   now?: () => Date
   serviceName?: string
-  sourceRevision?: string
 }
 
 export const buildApp = (options: AppOptions = {}): FastifyInstance => {
   const serviceName = options.serviceName ?? "checkout-api"
   const environment = options.environment ?? "local"
   const now = options.now ?? (() => new Date())
-  const sourceRevision = options.sourceRevision ?? "unknown"
   const app = Fastify({
     logController: new LogController({ disableRequestLogging: true }),
     logger: options.logger === true
@@ -123,11 +121,10 @@ export const buildApp = (options: AppOptions = {}): FastifyInstance => {
     metrics.recordChange(changedAt.getTime() / 1_000)
     request.log.info({
       event: "change_recorded",
-      changed_at: changedAt.toISOString(),
-      revision: sourceRevision
+      changed_at: changedAt.toISOString()
     }, "change marker recorded")
 
-    return { changedAt: changedAt.toISOString(), revision: sourceRevision }
+    return { changedAt: changedAt.toISOString() }
   })
 
   return app

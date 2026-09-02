@@ -39,3 +39,15 @@ _Avoid_: Incidente resolvido, sistema recuperado, causa corrigida
 **Incidente encerrado**:
 Incidente anteriormente aguardando confirmação cujo acompanhamento foi finalizado explicitamente por uma pessoa ou política operacional. Seu encerramento é terminal, não afirma que a causa raiz foi descoberta e não é revertido por eventos atrasados; uma nova falha inicia outro incidente.
 _Avoid_: Alerta resolvido, sinais encerrados, RCA concluído
+
+**Contexto do incidente**:
+Pacote sanitizado com o incidente, suas ocorrências, evidências observáveis e classificação determinística. Não contém código, credenciais de repositório nem uma conclusão de causa raiz.
+_Avoid_: RCA, snapshot do repositório, prompt
+
+**Handoff de RCA**:
+Ato explícito em que o operador entrega o contexto do incidente a um agente e aponta, separadamente, o checkout local que pode ser consultado. O estado desse checkout é uma entrada declarada pelo operador, não algo inferido pelo Analyzer.
+_Avoid_: Coleta automática de código, evidência do Analyzer
+
+**RCA assistido**:
+Análise produzida por um agente a partir do contexto do incidente e do checkout disponibilizado pelo operador. Deve separar observações, hipóteses e limitações; não altera o ciclo de vida do incidente por si só.
+_Avoid_: Severidade determinística, encerramento do incidente

@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { Incident } from "../src/domain/incident.ts"
 import type { EvidenceCollectionContext } from "../src/evidence/contracts.ts"
 import { defaultEvidencePolicy } from "../src/evidence/evidence-collector.ts"
-import { makeGitHubCodeEvidenceSource } from "../src/evidence/github-code-source.ts"
 import { makeLokiEvidenceSource } from "../src/evidence/loki-source.ts"
 import { makePrometheusEvidenceSource } from "../src/evidence/prometheus-source.ts"
 
@@ -119,50 +118,5 @@ describe("evidence source adapters", () => {
       code: "truncated",
       description: "Log evidence reached the limit of 2 entries"
     }])
-  })
-
-  it("retrieves only configured lines at a full GitHub commit SHA", async () => {
-    const fetchMock = vi.fn(async () => new Response([
-      "line one",
-      "line two",
-      "line three",
-      "line four"
-    ].join("\n")))
-    vi.stubGlobal("fetch", fetchMock)
-    const revision = "6d8eb76adf7979653ad5db5c9f54f329abc95e71"
-    const source = makeGitHubCodeEvidenceSource({
-      token: "github-secret-token",
-      catalog: {
-        "checkout-api": {
-          provider: "github",
-          owner: "greffsh",
-          repository: "observability-ai",
-          revision,
-          files: [{ path: "src/app.ts", startLine: 2, endLine: 3 }]
-        }
-      }
-    })
-
-    const result = await Effect.runPromise(source.collect(context))
-    const [requestUrl, requestOptions] = fetchMock.mock.calls[0] ?? []
-
-    expect((requestUrl as URL).searchParams.get("ref")).toBe(revision)
-    expect(requestOptions).toMatchObject({
-      headers: { authorization: "Bearer github-secret-token" }
-    })
-    expect(result.evidence[0]).toMatchObject({
-      source: "codebase",
-      reference: `https://github.com/greffsh/observability-ai/blob/${revision}/src/app.ts#L2-L3`,
-      data: {
-        repository: "greffsh/observability-ai",
-        revision,
-        file: "src/app.ts",
-        startLine: 2,
-        endLine: 3,
-        content: "2: line two\n3: line three",
-        contentSha256: expect.stringMatching(/^[a-f0-9]{64}$/)
-      }
-    })
-    expect(JSON.stringify(result)).not.toContain("github-secret-token")
   })
 })

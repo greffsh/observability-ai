@@ -1,13 +1,12 @@
 # Contratos das fontes de evidência do CP-07
 
-Pesquisa realizada em 2026-08-31 para orientar os adapters read-only de Prometheus, Loki, GitHub e GitLab. Foram usadas somente fontes oficiais.
+Pesquisa realizada em 2026-08-31 para orientar os adapters read-only de Prometheus e Loki. Foram usadas somente fontes oficiais.
 
 ## Resumo das decisões recomendadas
 
 1. Consultar métricas e logs com `start` e `end` explícitos, janela curta e limites locais de séries, entradas e bytes; a fronteira final é inclusiva no Prometheus e exclusiva no Loki. [Prometheus HTTP API](https://prometheus.io/docs/prometheus/latest/querying/api/) e [Loki HTTP API](https://grafana.com/docs/loki/latest/reference/loki-http-api/)
 2. Construir PromQL e LogQL com parâmetros codificados, sem interpolação manual: usar `POST application/x-www-form-urlencoded` para PromQL grande e `GET` com query string codificada para o contrato documentado do Loki. [Prometheus HTTP API](https://prometheus.io/docs/prometheus/latest/querying/api/) e [Loki HTTP API](https://grafana.com/docs/loki/latest/reference/loki-http-api/)
-3. Buscar código somente em um SHA completo de commit e persistir separadamente o identificador da revisão e um permalink humano para o mesmo commit, arquivo e intervalo de linhas. Branches podem mudar; GitHub e GitLab documentam permalinks fixados à revisão. [Permalinks do GitHub](https://docs.github.com/en/repositories/working-with-files/using-files/getting-permanent-links-to-files) e [permalinks do GitLab](https://docs.gitlab.com/user/project/repository/files/#create-permalinks)
-4. Tratar indisponibilidade, timeout, limite excedido e resposta parcial como estado da fonte no pacote, preservando as demais evidências. Essa é uma recomendação de desenho derivada dos envelopes de erro, warnings e limites configuráveis das APIs descritos abaixo.
+3. Tratar indisponibilidade, timeout, limite excedido e resposta parcial como estado da fonte no pacote, preservando as demais evidências. Essa é uma recomendação de desenho derivada dos envelopes de erro, warnings e limites configuráveis das APIs descritos abaixo.
 
 ## Prometheus: consulta de métricas
 
@@ -54,36 +53,6 @@ Os limites são configuração do deployment, não garantias do cliente. A refer
 
 Loki OSS não inclui uma camada de autenticação e a documentação orienta colocar um proxy autenticador à frente. Com multi-tenancy habilitado, `X-Scope-OrgID` identifica o tenant e sua ausência resulta em `401`; com `auth_enabled: false`, o header não é necessário. O identificador do tenant não substitui autenticação. [Autenticação do Loki](https://grafana.com/docs/loki/latest/operations/authentication/) e [multi-tenancy do Loki](https://grafana.com/docs/loki/latest/operations/multi-tenancy/)
 
-## GitHub: arquivo em commit exato
-
-`GET /repos/{owner}/{repo}/contents/{path}?ref={commit_sha}` recupera um arquivo na revisão indicada por `ref`. A resposta JSON de arquivo inclui `content` em Base64, `encoding`, `sha` do blob, `size`, `path`, `html_url` e `download_url`; o media type `application/vnd.github.raw+json` pode retornar o conteúdo bruto. [Repository contents API](https://docs.github.com/en/rest/repos/contents#get-repository-content)
-
-Para repositórios privados, tokens fine-grained precisam somente da permissão de repositório `Contents: read` e são enviados como `Authorization: Bearer`; recursos públicos podem ser consultados sem autenticação. O endpoint suporta arquivos de até 100 MB, com restrições de media type acima de 1 MB, e `download_url` expira, portanto não deve ser armazenada como referência durável. [Repository contents API](https://docs.github.com/en/rest/repos/contents#get-repository-content)
-
-Como recomendação de implementação, montar a URL com um construtor, codificando `owner`, `repo`, cada segmento de `path` e `ref` sem permitir que dados de configuração alterem host ou rota. O contrato oficial define esses valores como parâmetros separados. [Repository contents API](https://docs.github.com/en/rest/repos/contents#get-repository-content)
-
-Referência humana estável:
-
-```text
-https://github.com/{owner}/{repo}/blob/{commit_sha}/{path}#L{start}-L{end}
-```
-
-O GitHub documenta que substituir a branch por um commit ID fixa a versão e permite permalinks para uma linha ou intervalo; para Markdown em modo fonte, usa-se `?plain=1#L{line}`. [Permalinks para arquivos](https://docs.github.com/en/repositories/working-with-files/using-files/getting-permanent-links-to-files) e [permalinks para trechos](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/creating-a-permanent-link-to-a-code-snippet)
-
-## GitLab: arquivo em commit exato
-
-`GET /projects/{id}/repository/files/{file_path}?ref={commit_sha}` exige `id` do projeto ou path do projeto URL-encoded, `file_path` completo URL-encoded e `ref`, que pode ser commit. O sucesso inclui `content` em Base64, `content_sha256`, `blob_id`, `commit_id`, `last_commit_id`, `file_path`, `size` e `encoding`; o endpoint alternativo terminado em `/raw` devolve o conteúdo bruto. [Repository files API](https://docs.gitlab.com/api/repository_files/#retrieve-a-file-from-a-repository)
-
-Tokens pessoais aceitos para leitura podem usar `read_repository` ou `read_api` e os exemplos oficiais usam o header `PRIVATE-TOKEN`; repositórios públicos não exigem autenticação. Arquivos acima de 10 MB têm limite documentado de cinco requisições por minuto nesse endpoint. [Repository files API](https://docs.gitlab.com/api/repository_files/)
-
-Referência humana estável:
-
-```text
-https://gitlab.example.com/{namespace}/{project}/-/blob/{commit_sha}/{path}#L{start}-{end}
-```
-
-O GitLab define permalinks como URLs que continuam válidas quando o repositório muda e permite copiar um permalink de uma linha ou seleção; seu guia oficial também mostra o formato `/-/blob/{commit}/{path}#L3` e recomenda commit no lugar da branch. [Permalinks do GitLab](https://docs.gitlab.com/user/project/repository/files/#create-permalinks) e [guia de links para linhas](https://docs.gitlab.com/development/documentation/styleguide/#link-to-specific-lines-of-code)
-
 ## Contrato recomendado para o pacote
 
 As recomendações abaixo são inferências de engenharia para satisfazer a auditabilidade do CP-07, baseadas nos contratos oficiais acima:
@@ -91,7 +60,6 @@ As recomendações abaixo são inferências de engenharia para satisfazer a audi
 - manter por consulta `source`, `query`, `window.start`, `window.end`, `fetched_at`, duração, status e eventual limitação sanitizada;
 - manter dados numéricos como strings durante o parse quando a API assim os fornece, em especial epoch-ns do Loki, evitando perda de precisão antes da normalização; [Loki HTTP API](https://grafana.com/docs/loki/latest/reference/loki-http-api/#query-logs-within-a-range-of-time)
 - distinguir `complete`, `partial`, `unavailable`, `timed_out` e `truncated`; resultado vazio é uma coleta bem-sucedida, não indisponibilidade;
-- guardar evidência de código com provedor, host, repositório/projeto, SHA completo do commit, path, linhas inicial/final, hash do conteúdo e permalink construído para o mesmo SHA; [Permalinks do GitHub](https://docs.github.com/en/repositories/working-with-files/using-files/getting-permanent-links-to-files) e [permalinks do GitLab](https://docs.gitlab.com/user/project/repository/files/#create-permalinks)
-- nunca persistir token, header de autenticação, URL temporária de download ou mensagem remota sem sanitização;
+- nunca persistir header de autenticação ou mensagem remota sem sanitização;
 - aplicar timeout do cliente abaixo do orçamento global do Analyzer e retries curtos somente após classificar a falha como transitória; não repetir automaticamente erros determinísticos de contrato como `400`/`422`; [Prometheus HTTP API](https://prometheus.io/docs/prometheus/latest/querying/api/#format-overview)
 - limitar previamente janela e seletor, depois limitar quantidade e bytes localmente; limites do servidor podem variar por deployment e não substituem os limites do pacote. [Parâmetros do Prometheus](https://prometheus.io/docs/prometheus/latest/command-line/prometheus/) e [configuração do Loki](https://grafana.com/docs/loki/latest/configure/)
