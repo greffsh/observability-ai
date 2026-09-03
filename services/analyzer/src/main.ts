@@ -95,15 +95,13 @@ const main = Effect.gen(function* () {
   })
 
   const app = buildApp({
-    evidenceCollector,
     eventStore,
     grafanaWebhookSecret: Redacted.value(config.grafanaWebhookSecret),
     operatorId: config.operatorId,
     operatorToken: Redacted.value(config.operatorToken),
     rcaHandoffExporter,
     logger: logging.logger,
-    runEffect: logging.runPromise,
-    severityAssessor
+    runEffect: logging.runPromise
   })
 
   yield* Effect.acquireRelease(

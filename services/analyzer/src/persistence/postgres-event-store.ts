@@ -53,6 +53,10 @@ type IncidentRow = {
   readonly updatedAt: Date
 }
 
+type IncidentSummaryRow = IncidentRow & {
+  readonly activeAlerts: number
+}
+
 const eventPayload = (event: AlertEvent) => ({
   ...event,
   startedAt: event.startedAt.toISOString(),
@@ -381,6 +385,39 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
         LIMIT 1
       `.pipe(
         Effect.map((rows) => Option.map(Option.fromNullable(rows[0]), rowToIncident)),
+        Effect.mapError((cause) => new EventStoreError({ operation: "find", cause }))
+      ),
+      listIncidents: (filter) => sql<IncidentSummaryRow>`
+        SELECT
+          incident.id, incident.status, incident.service, incident.environment,
+          incident.detected_at AS "detectedAt",
+          incident.last_activity_at AS "lastActivityAt",
+          incident.signals_cleared_at AS "signalsClearedAt",
+          incident.closed_at AS "closedAt",
+          incident.closure_method AS "closureMethod",
+          incident.closure_reason AS "closureReason",
+          incident.closed_by AS "closedBy",
+          incident.closure_note AS "closureNote",
+          incident.closure_policy_version AS "closurePolicyVersion",
+          incident.created_at AS "createdAt",
+          incident.updated_at AS "updatedAt",
+          count(occurrence.id) FILTER (WHERE occurrence.status = 'open')::integer AS "activeAlerts"
+        FROM incidents AS incident
+        LEFT JOIN incident_occurrences AS relation
+          ON relation.incident_id = incident.id
+        LEFT JOIN alert_occurrences AS occurrence
+          ON occurrence.id = relation.occurrence_id
+        WHERE (${filter.status ?? null}::text IS NULL OR incident.status = ${filter.status ?? null})
+          AND (${filter.service ?? null}::text IS NULL OR incident.service = ${filter.service ?? null})
+          AND (${filter.environment ?? null}::text IS NULL OR incident.environment = ${filter.environment ?? null})
+        GROUP BY incident.id
+        ORDER BY incident.detected_at DESC, incident.id
+        LIMIT 100
+      `.pipe(
+        Effect.map((rows) => rows.map((row) => ({
+          ...rowToIncident(row),
+          activeAlerts: row.activeAlerts
+        }))),
         Effect.mapError((cause) => new EventStoreError({ operation: "find", cause }))
       ),
       findOccurrencesByIncidentId: (incidentId) => sql<AlertOccurrence>`

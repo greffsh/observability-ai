@@ -84,3 +84,7 @@ fornece separadamente o contexto do incidente e o checkout local:
 incident_context=./incident.json
 repository_path=/caminho/para/connect
 ```
+
+O contexto pode ser gerado pelo endpoint de exportação descrito em
+[rca-handoff.md](rca-handoff.md). O checkout nunca é inferido do perfil do
+serviço nem incluído pelo Analyzer no pacote.

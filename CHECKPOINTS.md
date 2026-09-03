@@ -1097,6 +1097,16 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** a checkout continua suportada por seu perfil e outros serviços podem entrar por configuração; as consultas são configuração operacional confiável e exigem restart; métricas delta precisam ser convertidas antes do exporter Prometheus estável da PoC; ausência de perfil ou sinal permanece explícita e inconclusiva.
 - **Checkpoints afetados:** CP-07, CP-08, CP-09 e CP-13.
 
+### DEC-017 — Interface operacional centrada no incidente e no handoff
+
+- **Data:** 2026-09-03
+- **Estado:** aceita
+- **Contexto:** o fluxo manual obrigava o operador a consultar tabelas e conhecer eventos, ocorrências, coleta de evidências e severidade antes de solicitar um RCA, embora esses detalhes já fossem coordenados internamente pelo handoff.
+- **Decisão:** expor uma listagem filtrável de incidentes autenticada como operador; reservar a credencial do Grafana à ingestão; manter a consulta de eventos apenas para referências de auditoria; remover os endpoints HTTP independentes de evidência e severidade. A exportação do handoff continua coletando evidências e calculando a severidade internamente e pode ocorrer enquanto o incidente está aberto.
+- **Alternativas consideradas:** manter o fluxo orientado por eventos; exigir consulta direta ao PostgreSQL; preservar todos os endpoints como interface operacional; gerar RCA automaticamente no Analyzer.
+- **Consequências:** o caminho normal fica limitado a listar/consultar incidente e exportar handoff; detalhes de correlação e classificação permanecem encapsulados; testes especializados continuam exercitando os módulos internos diretamente; a geração do RCA permanece manual e supervisionada.
+- **Checkpoints afetados:** CP-05, CP-07, CP-08, CP-09 e CP-13.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                                                                                                                                          | Responsável |
@@ -1132,3 +1142,4 @@ Usar uma entrada por decisão tomada:
 | 2026-09-02 | Connect integrado localmente via OTLP com logs, métricas cumulativas, alerta firing/resolved, incidente, severidade alta por indisponibilidade e fechamento operacional validados. | Codex       |
 | 2026-09-03 | CP-09 iniciado com seleção priorizada de logs e exportação compacta e autenticada do contexto para o handoff manual de RCA.                                                        | Codex       |
 | 2026-09-03 | Skill `incident-rca` versionada com fronteira de confiança, contrato estruturado e validação determinística de evidências e referências de código.                                          | Codex       |
+| 2026-09-03 | Interface operacional simplificada para listar incidentes e exportar o handoff; coleta de evidências e severidade deixaram de ser endpoints HTTP independentes.                                | Codex       |

@@ -29,7 +29,6 @@ beforeEach(() => {
   })
   app = buildApp({
     eventStore,
-    evidenceCollector,
     grafanaWebhookSecret: "test-webhook-secret",
     operatorId: "test-operator",
     operatorToken: "test-operator-token",
@@ -39,8 +38,7 @@ beforeEach(() => {
       now: () => new Date("2026-08-28T13:21:05Z"),
       makeId: () => "handoff-1"
     }),
-    now: () => new Date("2026-08-28T13:21:05Z"),
-    severityAssessor
+    now: () => new Date("2026-08-28T13:21:05Z")
   })
 })
 
@@ -121,7 +119,7 @@ describe("Analyzer HTTP API", () => {
     const response = await app.inject({
       method: "GET",
       url: `/v1/events/${encodeURIComponent(eventId)}`,
-      headers: { authorization: "Bearer test-webhook-secret" }
+      headers: { authorization: "Bearer test-operator-token" }
     })
 
     expect(response.statusCode).toBe(200)
@@ -139,6 +137,71 @@ describe("Analyzer HTTP API", () => {
     })
   })
 
+  it("lists incidents for operators using operational filters", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/grafana",
+      headers: { authorization: "Bearer test-webhook-secret" },
+      payload: firingWebhookFixture
+    })
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/incidents?status=open&service=checkout-api&environment=local",
+      headers: { authorization: "Bearer test-operator-token" }
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toEqual({
+      incidents: [{
+        id: "memory-incident-1",
+        service: "checkout-api",
+        environment: "local",
+        status: "open",
+        detectedAt: "2026-08-28T13:21:00.000Z",
+        lastActivityAt: "2026-08-28T13:21:00.000Z",
+        signalsClearedAt: null,
+        activeAlerts: 1
+      }]
+    })
+  })
+
+  it("returns an empty incident list when operational filters do not match", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/incidents?status=open&service=connect",
+      headers: { authorization: "Bearer test-operator-token" }
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toEqual({ incidents: [] })
+  })
+
+  it("rejects invalid incident list filters", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/incidents?status=resolved",
+      headers: { authorization: "Bearer test-operator-token" }
+    })
+
+    expect(response.statusCode).toBe(400)
+    expect(response.json()).toEqual({
+      error: "invalid_incident_filter",
+      field: "status"
+    })
+  })
+
+  it("does not authorize incident reads with the Grafana credential", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/incidents",
+      headers: { authorization: "Bearer test-webhook-secret" }
+    })
+
+    expect(response.statusCode).toBe(401)
+    expect(response.json()).toEqual({ error: "unauthorized" })
+  })
+
   it("returns the incident correlated to an event", async () => {
     await app.inject({
       method: "POST",
@@ -149,7 +212,7 @@ describe("Analyzer HTTP API", () => {
     const response = await app.inject({
       method: "GET",
       url: "/v1/incidents/memory-incident-1",
-      headers: { authorization: "Bearer test-webhook-secret" }
+      headers: { authorization: "Bearer test-operator-token" }
     })
 
     expect(response.statusCode).toBe(200)
@@ -235,7 +298,7 @@ describe("Analyzer HTTP API", () => {
     const incident = await app.inject({
       method: "GET",
       url: "/v1/incidents/memory-incident-1",
-      headers: { authorization: "Bearer test-webhook-secret" }
+      headers: { authorization: "Bearer test-operator-token" }
     })
     expect(incident.json()).toMatchObject({
       status: "closed",
@@ -285,64 +348,22 @@ describe("Analyzer HTTP API", () => {
     const response = await app.inject({
       method: "GET",
       url: "/v1/incidents/unknown-incident",
-      headers: { authorization: "Bearer test-webhook-secret" }
+      headers: { authorization: "Bearer test-operator-token" }
     })
 
     expect(response.statusCode).toBe(404)
     expect(response.json()).toEqual({ error: "incident_not_found" })
   })
 
-  it("collects an evidence package for an incident", async () => {
-    await app.inject({
-      method: "POST",
-      url: "/v1/webhooks/grafana",
-      headers: { authorization: "Bearer test-webhook-secret" },
-      payload: firingWebhookFixture
-    })
-    const response = await app.inject({
-      method: "POST",
-      url: "/v1/incidents/memory-incident-1/evidence",
-      headers: { authorization: "Bearer test-webhook-secret" }
-    })
-
-    expect(response.statusCode).toBe(200)
-    expect(response.json()).toMatchObject({
-      schemaVersion: 1,
-      packageId: "evidence-package-1",
-      incidentId: "memory-incident-1",
-      window: {
-        start: "2026-08-28T13:16:00.000Z",
-        end: "2026-08-28T13:21:05.000Z"
-      },
-      evidence: [{
-        source: "alert",
-        reference: "http://analyzer.test/v1/events/fixture-checkout-failure%3Afiring%3A2026-08-28T13%3A21%3A00.000Z"
-      }],
-      limitations: []
-    })
-  })
-
-  it("returns an auditable inconclusive severity when impact metrics are absent", async () => {
-    await app.inject({
-      method: "POST",
-      url: "/v1/webhooks/grafana",
-      headers: { authorization: "Bearer test-webhook-secret" },
-      payload: firingWebhookFixture
-    })
-    const response = await app.inject({
-      method: "POST",
-      url: "/v1/incidents/memory-incident-1/severity",
-      headers: { authorization: "Bearer test-webhook-secret" }
-    })
-
-    expect(response.statusCode).toBe(200)
-    expect(response.json()).toMatchObject({
-      assessment: {
-        recommendedSeverity: "inconclusiva",
-        triggeredRules: [{ code: "INSUFFICIENT_IMPACT_DATA" }]
-      },
-      evidencePackage: { packageId: "evidence-package-1" }
-    })
+  it("keeps evidence and severity collection behind the handoff interface", async () => {
+    for (const suffix of ["evidence", "severity"]) {
+      const response = await app.inject({
+        method: "POST",
+        url: `/v1/incidents/memory-incident-1/${suffix}`,
+        headers: { authorization: "Bearer test-operator-token" }
+      })
+      expect(response.statusCode).toBe(404)
+    }
   })
 
   it("exports a compact RCA handoff with operator authentication", async () => {
@@ -411,7 +432,7 @@ describe("Analyzer HTTP API", () => {
     const response = await app.inject({
       method: "GET",
       url: "/v1/events/unknown-event",
-      headers: { authorization: "Bearer test-webhook-secret" }
+      headers: { authorization: "Bearer test-operator-token" }
     })
 
     expect(response.statusCode).toBe(404)
@@ -427,6 +448,7 @@ describe("Analyzer HTTP API", () => {
       findByEventId: () => Effect.succeed(Option.none()),
       findByIncidentId: () => Effect.succeed([]),
       findIncidentById: () => Effect.succeed(Option.none()),
+      listIncidents: () => Effect.succeed([]),
       findOccurrencesByIncidentId: () => Effect.succeed([]),
       closeIncident: () => Effect.fail(new EventStoreError({
         operation: "close",
@@ -445,7 +467,6 @@ describe("Analyzer HTTP API", () => {
     })
     const unavailableApp = buildApp({
       eventStore: unavailableStore,
-      evidenceCollector: unavailableEvidenceCollector,
       grafanaWebhookSecret: "test-webhook-secret",
       operatorId: "test-operator",
       operatorToken: "test-operator-token",
@@ -453,8 +474,7 @@ describe("Analyzer HTTP API", () => {
         eventStore: unavailableStore,
         severityAssessor
       }),
-      now: () => new Date("2026-08-28T13:21:05Z"),
-      severityAssessor
+      now: () => new Date("2026-08-28T13:21:05Z")
     })
 
     try {

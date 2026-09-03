@@ -31,6 +31,16 @@ export type RecordAlertEventsResult = {
   readonly duplicateEventIds: ReadonlyArray<string>
 }
 
+export type ListIncidentsFilter = {
+  readonly status?: IncidentStatus
+  readonly service?: string
+  readonly environment?: string
+}
+
+export type IncidentSummary = Incident & {
+  readonly activeAlerts: number
+}
+
 export type StoredAlertEvent = {
   readonly id: string
   readonly occurrenceId: string | null
@@ -52,6 +62,9 @@ export type EventStore = {
   readonly findIncidentById: (
     incidentId: string
   ) => Effect.Effect<Option.Option<Incident>, EventStoreError>
+  readonly listIncidents: (
+    filter: ListIncidentsFilter
+  ) => Effect.Effect<ReadonlyArray<IncidentSummary>, EventStoreError>
   readonly findOccurrencesByIncidentId: (
     incidentId: string
   ) => Effect.Effect<ReadonlyArray<AlertOccurrence>, EventStoreError>

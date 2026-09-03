@@ -7,20 +7,19 @@ import Fastify, {
   type FastifyReply,
   type FastifyRequest
 } from "fastify"
-import type { EvidenceCollector } from "./evidence/contracts.js"
 import { normalizeGrafanaWebhook } from "./ingestion/normalize-grafana-webhook.js"
 import type { EffectRunner } from "./logging.js"
 import type { EventStore } from "./persistence/event-store.js"
 import type { RcaHandoffExporter } from "./rca-handoff/contracts.js"
 import {
+  incidentStatuses,
   incidentClosureReasons,
   type Incident,
-  type IncidentClosureReason
+  type IncidentClosureReason,
+  type IncidentStatus
 } from "./domain/incident.js"
-import type { SeverityAssessor } from "./severity/contracts.js"
 
 type AppOptions = {
-  evidenceCollector: EvidenceCollector
   eventStore: EventStore
   grafanaWebhookSecret: string
   logger?: FastifyBaseLogger
@@ -29,7 +28,12 @@ type AppOptions = {
   operatorToken: string
   rcaHandoffExporter: RcaHandoffExporter
   runEffect?: EffectRunner
-  severityAssessor: SeverityAssessor
+}
+
+type IncidentListQuerystring = {
+  readonly status?: string
+  readonly service?: string
+  readonly environment?: string
 }
 
 const SilentLogger = Logger.replace(Logger.defaultLogger, Logger.none)
@@ -83,6 +87,9 @@ const parseClosureBody = (
 const assertUnreachable = (x: never): never => {
   throw new Error(`Unhandled case: ${JSON.stringify(x)}`)
 }
+
+const validTextFilter = (value: string | undefined): boolean =>
+  value === undefined || (value.trim().length > 0 && value.length <= 200)
 
 export const buildApp = (options: AppOptions): FastifyInstance => {
   if (options.grafanaWebhookSecret.length === 0) {
@@ -199,7 +206,7 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
   })
 
   app.get<{ Params: { eventId: string } }>("/v1/events/:eventId", {
-    onRequest: authenticate
+    onRequest: authenticateOperator
   }, async (request, reply) => {
     const result = await runEffect(
       Effect.either(options.eventStore.findByEventId(request.params.eventId))
@@ -216,8 +223,57 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
     return reply.code(200).send(result.right.value)
   })
 
+  app.get<{ Querystring: IncidentListQuerystring }>("/v1/incidents", {
+    onRequest: authenticateOperator
+  }, async (request, reply) => {
+    const { status, service, environment } = request.query
+    if (
+      status !== undefined &&
+      !(incidentStatuses as ReadonlyArray<string>).includes(status)
+    ) {
+      return reply.code(400).send({
+        error: "invalid_incident_filter",
+        field: "status"
+      })
+    }
+    if (!validTextFilter(service)) {
+      return reply.code(400).send({
+        error: "invalid_incident_filter",
+        field: "service"
+      })
+    }
+    if (!validTextFilter(environment)) {
+      return reply.code(400).send({
+        error: "invalid_incident_filter",
+        field: "environment"
+      })
+    }
+
+    const result = await runEffect(Effect.either(options.eventStore.listIncidents({
+      ...(status === undefined ? {} : { status: status as IncidentStatus }),
+      ...(service === undefined ? {} : { service: service.trim() }),
+      ...(environment === undefined ? {} : { environment: environment.trim() })
+    })))
+    if (Either.isLeft(result)) {
+      return reply.code(503).send({ error: "persistence_unavailable" })
+    }
+
+    return reply.code(200).send({
+      incidents: result.right.map((incident) => ({
+        id: incident.id,
+        service: incident.service,
+        environment: incident.environment,
+        status: incident.status,
+        detectedAt: incident.detectedAt,
+        lastActivityAt: incident.lastActivityAt,
+        signalsClearedAt: incident.signalsClearedAt,
+        activeAlerts: incident.activeAlerts
+      }))
+    })
+  })
+
   app.get<{ Params: { incidentId: string } }>("/v1/incidents/:incidentId", {
-    onRequest: authenticate
+    onRequest: authenticateOperator
   }, async (request, reply) => {
     const result = await runEffect(
       Effect.either(options.eventStore.findIncidentById(request.params.incidentId))
@@ -240,42 +296,6 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
 
     return reply.code(200).send({ ...result.right.value, occurrences: occurrences.right })
   })
-
-  app.post<{ Params: { incidentId: string } }>(
-    "/v1/incidents/:incidentId/evidence",
-    { onRequest: authenticate },
-    async (request, reply) => {
-      const result = await runEffect(
-        Effect.either(options.evidenceCollector.collect(request.params.incidentId))
-      )
-
-      if (Either.isLeft(result)) {
-        return result.left._tag === "IncidentEvidenceNotFoundError"
-          ? reply.code(404).send({ error: "incident_not_found" })
-          : reply.code(503).send({ error: "persistence_unavailable" })
-      }
-
-      return reply.code(200).send(result.right)
-    }
-  )
-
-  app.post<{ Params: { incidentId: string } }>(
-    "/v1/incidents/:incidentId/severity",
-    { onRequest: authenticate },
-    async (request, reply) => {
-      const result = await runEffect(
-        Effect.either(options.severityAssessor.assess(request.params.incidentId))
-      )
-
-      if (Either.isLeft(result)) {
-        return result.left._tag === "SeverityIncidentNotFoundError"
-          ? reply.code(404).send({ error: "incident_not_found" })
-          : reply.code(503).send({ error: "severity_unavailable" })
-      }
-
-      return reply.code(200).send(result.right)
-    }
-  )
 
   app.post<{ Params: { incidentId: string } }>(
     "/v1/incidents/:incidentId/rca-handoff",

@@ -1,4 +1,6 @@
-export type IncidentStatus = "open" | "awaiting_confirmation" | "closed"
+export const incidentStatuses = ["open", "awaiting_confirmation", "closed"] as const
+
+export type IncidentStatus = typeof incidentStatuses[number]
 
 export const incidentClosureReasons = [
   "recovery_confirmed",

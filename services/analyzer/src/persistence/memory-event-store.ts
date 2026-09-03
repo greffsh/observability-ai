@@ -182,6 +182,25 @@ export const makeMemoryEventStore = (options?: {
     findIncidentById: (incidentId) => Effect.sync(() =>
       Option.fromNullable(incidents.get(incidentId))
     ),
+    listIncidents: (filter) => Effect.sync(() =>
+      Array.from(incidents.values())
+        .filter((incident) =>
+          (filter.status === undefined || incident.status === filter.status) &&
+          (filter.service === undefined || incident.service === filter.service) &&
+          (filter.environment === undefined || incident.environment === filter.environment)
+        )
+        .map((incident) => ({
+          ...incident,
+          activeAlerts: occurrencesFor(incident.id).filter(
+            (occurrence) => occurrence.status === "open"
+          ).length
+        }))
+        .sort((left, right) =>
+          right.detectedAt.getTime() - left.detectedAt.getTime() ||
+          left.id.localeCompare(right.id)
+        )
+        .slice(0, 100)
+    ),
     findOccurrencesByIncidentId: (incidentId) => Effect.sync(() =>
       occurrencesFor(incidentId)
     ),

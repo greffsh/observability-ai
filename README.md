@@ -178,19 +178,21 @@ Uma entrega nova retorna `inserted: 1`; o reenvio do mesmo `eventId` retorna
 }
 ```
 
-Consulte o evento persistido usando o mesmo Bearer:
+Os IDs de evento existem para deduplicação e auditoria internas. O fluxo normal
+do operador começa pela listagem de incidentes e usa
+`ANALYZER_OPERATOR_TOKEN`, não a credencial do Grafana:
 
 ```bash
-curl --header "Authorization: Bearer change-me-webhook" \
-  "http://localhost:8080/v1/events/manual-checkout-failure:firing:2026-08-28T09:00:00.000Z"
+curl --header "Authorization: Bearer change-me-operator" \
+  "http://localhost:8080/v1/incidents?status=open&service=checkout-api&environment=local"
 ```
 
-O resultado inclui o UUID do evento no banco, o `incidentId` correlacionado,
-o horário de persistência e o contrato interno normalizado. Use esse
-`incidentId` para consultar o ciclo de vida da ocorrência:
+Os filtros `status`, `service` e `environment` são opcionais. A resposta traz no
+máximo os 100 incidentes mais recentes e informa quantos alertas continuam ativos.
+Use o `id` retornado para consultar os detalhes:
 
 ```bash
-curl --header "Authorization: Bearer change-me-webhook" \
+curl --header "Authorization: Bearer change-me-operator" \
   "http://localhost:8080/v1/incidents/UUID-DO-INCIDENTE"
 ```
 
@@ -200,8 +202,24 @@ a identidade e o ciclo do alerta, incluindo `firingObserved`. Um evento
 `resolved` encerra sua ocorrência; o incidente só deixa de estar `open` quando
 nenhuma ocorrência associada permanece aberta.
 
-Um operador pode encerrar um incidente em `awaiting_confirmation` usando sua
-credencial própria:
+O operador pode exportar o contexto do RCA a qualquer momento, inclusive com o
+incidente ainda `open`:
+
+```bash
+curl --fail --request POST \
+  --header "Authorization: Bearer change-me-operator" \
+  --output rca-handoff.json \
+  "http://localhost:8080/v1/incidents/UUID-DO-INCIDENTE/rca-handoff"
+```
+
+Essa única operação coleta as evidências, calcula a severidade e devolve o
+snapshot sanitizado para o agente. Evidência e severidade não possuem endpoints
+operacionais separados. A recuperação do serviço não é pré-requisito: um
+handoff durante a falha serve para análise preliminar, e uma nova exportação
+depois do `resolved` pode alimentar o RCA final.
+
+Depois que todos os alertas forem resolvidos, um operador pode encerrar o
+incidente em `awaiting_confirmation`:
 
 ```bash
 curl --request PUT \
@@ -211,30 +229,9 @@ curl --request PUT \
 ```
 
 O fechamento é idempotente e auditável. Incidentes com ocorrências abertas
-retornam `409`; a credencial do webhook do Grafana não autoriza essa operação.
-Uma ocorrência posterior a um incidente encerrado inicia outro incidente.
-
-Para coletar as evidências e executar a classificação determinística:
-
-```bash
-curl --request POST \
-  --header "Authorization: Bearer change-me-webhook" \
-  "http://localhost:8080/v1/incidents/UUID-DO-INCIDENTE/severity"
-```
-
-A resposta contém `assessment` com a severidade recomendada, os sinais
-calculados, as regras acionadas, observações e limitações, além do
-`evidencePackage` usado na decisão. A mudança recente é relatada como contexto;
-ela não é usada como prova de causa.
-
-O operador pode exportar o contexto compacto usado no handoff do RCA:
-
-```bash
-curl --fail --request POST \
-  --header "Authorization: Bearer change-me-operator" \
-  --output rca-handoff.json \
-  "http://localhost:8080/v1/incidents/UUID-DO-INCIDENTE/rca-handoff"
-```
+retornam `409`; a credencial do webhook do Grafana não autoriza leitura,
+handoff ou encerramento. Uma ocorrência posterior a um incidente encerrado
+inicia outro incidente.
 
 O Analyzer não acessa repositórios e não chama um modelo de IA. O operador
 entrega o arquivo a um agente e aponta, como entrada separada, o checkout local
