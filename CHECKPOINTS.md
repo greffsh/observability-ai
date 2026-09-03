@@ -1107,6 +1107,16 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** o caminho normal fica limitado a listar/consultar incidente e exportar handoff; detalhes de correlação e classificação permanecem encapsulados; testes especializados continuam exercitando os módulos internos diretamente; a geração do RCA permanece manual e supervisionada.
 - **Checkpoints afetados:** CP-05, CP-07, CP-08, CP-09 e CP-13.
 
+### DEC-018 — Diagnóstico breve com evidências verificadas
+
+- **Data:** 2026-09-03
+- **Estado:** aceita
+- **Contexto:** o primeiro contrato da skill produziu um RCA de 1.372 palavras, com repetição entre resumo, timeline, causa, alternativas e ações. Seu validador confirmava a existência dos IDs citados, mas não comprovava que fonte e referência correspondiam ao item real do handoff.
+- **Decisão:** manter o nome `incident-rca`, mas produzir um diagnóstico de até 500 palavras com uma a cinco evidências decisivas, limitações compactas, uma a três próximas verificações e estado verificável do checkout. O validador confronta ID, fonte e referência com o handoff e branch, commit, dirty state e citações de código com o checkout.
+- **Alternativas consideradas:** preservar o RCA extenso; listar todas as evidências; validar apenas a estrutura Markdown; renomear a skill e quebrar a invocação existente.
+- **Consequências:** o resultado prioriza uso durante o incidente e reduz repetição; evidências não selecionadas continuam disponíveis no handoff; relatórios anteriores deixam de satisfazer o contrato v2 e precisam ser regenerados para obter a nova validação.
+- **Checkpoints afetados:** CP-09 e CP-10.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                                                                                                                                          | Responsável |
@@ -1143,3 +1153,4 @@ Usar uma entrada por decisão tomada:
 | 2026-09-03 | CP-09 iniciado com seleção priorizada de logs e exportação compacta e autenticada do contexto para o handoff manual de RCA.                                                        | Codex       |
 | 2026-09-03 | Skill `incident-rca` versionada com fronteira de confiança, contrato estruturado e validação determinística de evidências e referências de código.                                          | Codex       |
 | 2026-09-03 | Interface operacional simplificada para listar incidentes e exportar o handoff; coleta de evidências e severidade deixaram de ser endpoints HTTP independentes.                                | Codex       |
+| 2026-09-03 | Skill `incident-rca` reduzida a diagnóstico de até 500 palavras; validador passou a conferir evidências e estado real do checkout.                                                             | Codex       |
