@@ -4,6 +4,7 @@ import { buildApp } from "../src/app.ts"
 import { makeEvidenceCollector } from "../src/evidence/evidence-collector.ts"
 import { EventStoreError, type EventStore } from "../src/persistence/event-store.ts"
 import { makeMemoryEventStore } from "../src/persistence/memory-event-store.ts"
+import { makeRcaHandoffExporter } from "../src/rca-handoff/handoff-exporter.ts"
 import { makeSeverityAssessor } from "../src/severity/severity-assessor.ts"
 import { firingWebhookFixture } from "./fixtures/grafana-webhook.ts"
 import { checkoutServiceCatalog } from "./fixtures/service-catalog.ts"
@@ -21,18 +22,25 @@ beforeEach(() => {
     now: () => new Date("2026-08-28T13:21:05Z"),
     makeId: () => "evidence-package-1"
   })
+  const severityAssessor = makeSeverityAssessor({
+    eventStore,
+    evidenceCollector,
+    catalog: checkoutServiceCatalog
+  })
   app = buildApp({
     eventStore,
     evidenceCollector,
     grafanaWebhookSecret: "test-webhook-secret",
     operatorId: "test-operator",
     operatorToken: "test-operator-token",
-    now: () => new Date("2026-08-28T13:21:05Z"),
-    severityAssessor: makeSeverityAssessor({
+    rcaHandoffExporter: makeRcaHandoffExporter({
       eventStore,
-      evidenceCollector,
-      catalog: checkoutServiceCatalog
-    })
+      severityAssessor,
+      now: () => new Date("2026-08-28T13:21:05Z"),
+      makeId: () => "handoff-1"
+    }),
+    now: () => new Date("2026-08-28T13:21:05Z"),
+    severityAssessor
   })
 })
 
@@ -337,6 +345,68 @@ describe("Analyzer HTTP API", () => {
     })
   })
 
+  it("exports a compact RCA handoff with operator authentication", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/grafana",
+      headers: { authorization: "Bearer test-webhook-secret" },
+      payload: firingWebhookFixture
+    })
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/incidents/memory-incident-1/rca-handoff",
+      headers: { authorization: "Bearer test-operator-token" }
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.headers["content-disposition"]).toBe(
+      'attachment; filename="rca-handoff-handoff-1.json"'
+    )
+    expect(response.json()).toMatchObject({
+      schemaVersion: 1,
+      handoffId: "handoff-1",
+      exportedAt: "2026-08-28T13:21:05.000Z",
+      incident: {
+        id: "memory-incident-1",
+        status: "open",
+        service: "checkout-api",
+        environment: "local"
+      },
+      occurrences: [{
+        alertName: "Checkout failure mode enabled",
+        status: "open",
+        firingObserved: true
+      }],
+      severity: {
+        recommendedSeverity: "inconclusiva",
+        triggeredRules: [{ code: "INSUFFICIENT_IMPACT_DATA" }]
+      },
+      evidence: {
+        packageId: "evidence-package-1",
+        items: [{ source: "alert" }],
+        limitations: []
+      },
+      repositoryContext: {
+        included: false,
+        checkoutRequiredSeparately: true
+      }
+    })
+    expect(response.json().occurrences[0]).not.toHaveProperty("correlationKey")
+    expect(response.json().occurrences[0]).not.toHaveProperty("alertFingerprint")
+  })
+
+  it("does not export an RCA handoff with the Grafana credential", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/incidents/memory-incident-1/rca-handoff",
+      headers: { authorization: "Bearer test-webhook-secret" }
+    })
+
+    expect(response.statusCode).toBe(401)
+    expect(response.json()).toEqual({ error: "unauthorized" })
+  })
+
   it("returns 404 for an unknown event", async () => {
     const response = await app.inject({
       method: "GET",
@@ -368,18 +438,23 @@ describe("Analyzer HTTP API", () => {
       sources: [],
       analyzerPublicBaseUrl: "http://analyzer.test"
     })
+    const severityAssessor = makeSeverityAssessor({
+      eventStore: unavailableStore,
+      evidenceCollector: unavailableEvidenceCollector,
+      catalog: checkoutServiceCatalog
+    })
     const unavailableApp = buildApp({
       eventStore: unavailableStore,
       evidenceCollector: unavailableEvidenceCollector,
       grafanaWebhookSecret: "test-webhook-secret",
       operatorId: "test-operator",
       operatorToken: "test-operator-token",
-      now: () => new Date("2026-08-28T13:21:05Z"),
-      severityAssessor: makeSeverityAssessor({
+      rcaHandoffExporter: makeRcaHandoffExporter({
         eventStore: unavailableStore,
-        evidenceCollector: unavailableEvidenceCollector,
-        catalog: checkoutServiceCatalog
-      })
+        severityAssessor
+      }),
+      now: () => new Date("2026-08-28T13:21:05Z"),
+      severityAssessor
     })
 
     try {

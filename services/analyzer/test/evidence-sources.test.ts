@@ -150,8 +150,14 @@ describe("evidence source adapters", () => {
     const requestUrl = fetchMock.mock.calls[0]?.[0] as URL
 
     expect(requestUrl.searchParams.get("end")).toBe("1788171000001000000")
+    expect(requestUrl.searchParams.get("limit")).toBe("200")
     expect(result.evidence[0]).toMatchObject({
       data: {
+        selection: {
+          strategy: "errors_then_incident_proximity",
+          scannedEntries: 3,
+          returnedEntries: 2
+        },
         entries: [
           { line: "first" },
           { line: "second" }
@@ -161,7 +167,58 @@ describe("evidence source adapters", () => {
     expect(result.limitations).toEqual([{
       source: "logs",
       code: "truncated",
-      description: "Log evidence reached the limit of 2 entries"
+      description: "Selected 2 of 3 scanned log entries; errors and incident proximity were prioritized"
     }])
+  })
+
+  it("selects errors first and then logs closest to incident detection", async () => {
+    const nanoseconds = (iso: string) =>
+      (BigInt(new Date(iso).getTime()) * 1_000_000n).toString()
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      status: "success",
+      data: {
+        resultType: "streams",
+        result: [
+          {
+            stream: { service: "checkout-api", environment: "local", level: "error" },
+            values: [[nanoseconds("2026-08-31T09:56:00Z"), "older-error"]]
+          },
+          {
+            stream: { service: "checkout-api", environment: "local", level: "info" },
+            values: [
+              [nanoseconds("2026-08-31T10:09:00Z"), "far-info"],
+              [nanoseconds("2026-08-31T10:00:01Z"), "nearest-info"]
+            ]
+          },
+          {
+            stream: { service: "checkout-api", environment: "local" },
+            values: [[
+              nanoseconds("2026-08-31T10:00:30Z"),
+              JSON.stringify({ severityText: "FATAL", message: "nearby-error" })
+            ]]
+          }
+        ]
+      }
+    }), { headers: { "content-type": "application/json" } }))
+    vi.stubGlobal("fetch", fetchMock)
+    const source = makeLokiEvidenceSource({
+      baseUrl: "http://loki:3100",
+      publicBaseUrl: "http://localhost:3100"
+    })
+
+    const result = await Effect.runPromise(source.collect({
+      ...context,
+      policy: { ...context.policy, maxLogEntries: 3 }
+    }))
+
+    expect(result.evidence[0]).toMatchObject({
+      data: {
+        entries: [
+          { line: "older-error" },
+          { line: "nearest-info" },
+          { line: expect.stringContaining("nearby-error") }
+        ]
+      }
+    })
   })
 })

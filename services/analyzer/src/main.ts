@@ -8,6 +8,7 @@ import { makeLokiEvidenceSource } from "./evidence/loki-source.js"
 import { makePrometheusEvidenceSource } from "./evidence/prometheus-source.js"
 import { makeApplicationLogging } from "./logging.js"
 import { makePostgresEventStore } from "./persistence/postgres-event-store.js"
+import { makeRcaHandoffExporter } from "./rca-handoff/handoff-exporter.js"
 import { loadServiceCatalog } from "./service-catalog.js"
 import { makeSeverityAssessor } from "./severity/severity-assessor.js"
 
@@ -88,6 +89,10 @@ const main = Effect.gen(function* () {
     evidenceCollector,
     catalog: serviceCatalog
   })
+  const rcaHandoffExporter = makeRcaHandoffExporter({
+    eventStore,
+    severityAssessor
+  })
 
   const app = buildApp({
     evidenceCollector,
@@ -95,6 +100,7 @@ const main = Effect.gen(function* () {
     grafanaWebhookSecret: Redacted.value(config.grafanaWebhookSecret),
     operatorId: config.operatorId,
     operatorToken: Redacted.value(config.operatorToken),
+    rcaHandoffExporter,
     logger: logging.logger,
     runEffect: logging.runPromise,
     severityAssessor

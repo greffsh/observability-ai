@@ -41,6 +41,7 @@ export type EvidencePolicy = {
   readonly maxWindowMs: number
   readonly sourceTimeoutMs: number
   readonly maxLogEntries: number
+  readonly maxLogScanEntries: number
   readonly maxMetricPoints: number
   readonly maxMetricSeries: number
   readonly maxStringLength: number

@@ -227,11 +227,21 @@ calculados, as regras acionadas, observações e limitações, além do
 `evidencePackage` usado na decisão. A mudança recente é relatada como contexto;
 ela não é usada como prova de causa.
 
-Neste estágio, esse é o limite do fluxo automatizado. O Analyzer não acessa
-repositórios e não chama um modelo de IA. Para produzir um RCA, o operador
-entrega manualmente o contexto do incidente a um agente e aponta, como uma
-entrada separada, o checkout local que o agente poderá analisar. A skill e o
-formato único desse handoff serão implementados no CP-09.
+O operador pode exportar o contexto compacto usado no handoff do RCA:
+
+```bash
+curl --fail --request POST \
+  --header "Authorization: Bearer change-me-operator" \
+  --output rca-handoff.json \
+  "http://localhost:8080/v1/incidents/UUID-DO-INCIDENTE/rca-handoff"
+```
+
+O Analyzer não acessa repositórios e não chama um modelo de IA. O operador
+entrega o arquivo a um agente e aponta, como entrada separada, o checkout local
+que poderá ser analisado. O contrato, a seleção limitada de logs e as garantias
+desse limite estão em [docs/rca-handoff.md](docs/rca-handoff.md). A skill que
+consome o handoff está versionada em `.agents/skills/incident-rca` e pode ser
+invocada como `$incident-rca` em uma sessão iniciada neste repositório.
 
 Serviços adicionais são cadastrados em
 `infra/analyzer/service-catalog.json`. O perfil liga métricas próprias a sinais

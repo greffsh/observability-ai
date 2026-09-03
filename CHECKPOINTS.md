@@ -2,7 +2,7 @@
 
 > Documento vivo de requisitos, decisões e progresso da PoC.
 >
-> Última atualização: 2026-09-02
+> Última atualização: 2026-09-03
 
 Considerações específicas para uma implantação futura são mantidas em
 `HOMOLOGACAO.md`; decisões que alterem a PoC continuam sendo registradas neste
@@ -706,7 +706,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 ### CP-09 — Gerar RCA assistido por IA
 
-**Estado:** `PENDENTE`
+**Estado:** `EM ANDAMENTO`
 
 **Objetivo:** validar um RCA assistido manualmente, entregando ao agente o contexto do incidente e, separadamente, um checkout local escolhido pelo operador.
 
@@ -729,14 +729,31 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Sequência acordada para a próxima fase:**
 
-1. Melhorar a seleção limitada de logs, priorizando erros e o contexto temporal relevante.
-2. Implementar a exportação compacta do contexto do incidente e a skill versionada de RCA.
-3. Gerar e avaliar o primeiro RCA assistido usando um incidente controlado do Connect e seu checkout local.
+1. `CONCLUÍDO` — melhorar a seleção limitada de logs, priorizando erros e o contexto temporal relevante.
+2. `CONCLUÍDO` — implementar a exportação compacta do contexto do incidente e a skill versionada de RCA.
+3. `PENDENTE` — gerar e avaliar o primeiro RCA assistido usando um incidente controlado do Connect e seu checkout local.
 4. Adicionar traces em uma iteração posterior e comparar objetivamente a qualidade do RCA com e sem essa fonte.
 
 **Decisões:** DT-05, DT-06 e DT-13 concluídas pela DEC-015.
 
-**Evidências:** _a preencher_
+**Progresso em 2026-09-03:** a coleta do Loki passou a examinar um conjunto
+limitado maior e selecionar primeiro erros e depois entradas próximas à detecção
+do incidente, preservando a ordem cronológica e registrando estratégia,
+quantidades e truncamento. O endpoint autenticado de operador
+`POST /v1/incidents/:incidentId/rca-handoff` exporta um contrato v1 compacto e
+sanitizado com incidente, ocorrências, severidade e o mesmo pacote de evidências
+usado na classificação. O checkout permanece explicitamente fora do pacote.
+
+**Evidências:** módulos `services/analyzer/src/rca-handoff` e
+`services/analyzer/src/evidence/loki-source.ts`; contrato operacional em
+`docs/rca-handoff.md`; 55 testes, typecheck e build aprovados. O endpoint foi
+validado na stack local com o incidente
+`87413356-d94b-46ca-a378-f3b28728487f`, retornando uma ocorrência, oito itens de
+evidência e severidade `alta`; a seleção examinou 200 logs, reteve 50 e declarou
+o truncamento. A skill `.agents/skills/incident-rca` e seu contrato de saída
+Markdown foram
+validados estruturalmente, incluindo a rejeição de severidade divergente e de
+citações inexistentes. A execução avaliada do primeiro RCA ainda está pendente.
 
 ---
 
@@ -1113,3 +1130,5 @@ Usar uma entrada por decisão tomada:
 | 2026-09-02 | Integração direta com repositório removida; RCA seguirá por handoff manual para um agente com checkout local explícito.                                                            | Codex       |
 | 2026-09-02 | Coleta e severidade generalizadas por perfil de serviço e sinais de impacto; entrada OTLP preparada para serviços externos.                                                        | Codex       |
 | 2026-09-02 | Connect integrado localmente via OTLP com logs, métricas cumulativas, alerta firing/resolved, incidente, severidade alta por indisponibilidade e fechamento operacional validados. | Codex       |
+| 2026-09-03 | CP-09 iniciado com seleção priorizada de logs e exportação compacta e autenticada do contexto para o handoff manual de RCA.                                                        | Codex       |
+| 2026-09-03 | Skill `incident-rca` versionada com fronteira de confiança, contrato estruturado e validação determinística de evidências e referências de código.                                          | Codex       |

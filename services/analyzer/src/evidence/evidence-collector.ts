@@ -18,6 +18,7 @@ export const defaultEvidencePolicy: EvidencePolicy = {
   maxWindowMs: 30 * 60 * 1_000,
   sourceTimeoutMs: 3_000,
   maxLogEntries: 50,
+  maxLogScanEntries: 200,
   maxMetricPoints: 121,
   maxMetricSeries: 20,
   maxStringLength: 4_096

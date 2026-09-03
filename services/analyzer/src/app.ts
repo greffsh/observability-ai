@@ -11,6 +11,7 @@ import type { EvidenceCollector } from "./evidence/contracts.js"
 import { normalizeGrafanaWebhook } from "./ingestion/normalize-grafana-webhook.js"
 import type { EffectRunner } from "./logging.js"
 import type { EventStore } from "./persistence/event-store.js"
+import type { RcaHandoffExporter } from "./rca-handoff/contracts.js"
 import {
   incidentClosureReasons,
   type Incident,
@@ -26,6 +27,7 @@ type AppOptions = {
   now?: () => Date
   operatorId: string
   operatorToken: string
+  rcaHandoffExporter: RcaHandoffExporter
   runEffect?: EffectRunner
   severityAssessor: SeverityAssessor
 }
@@ -272,6 +274,30 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
       }
 
       return reply.code(200).send(result.right)
+    }
+  )
+
+  app.post<{ Params: { incidentId: string } }>(
+    "/v1/incidents/:incidentId/rca-handoff",
+    { onRequest: authenticateOperator },
+    async (request, reply) => {
+      const result = await runEffect(
+        Effect.either(options.rcaHandoffExporter.export(request.params.incidentId))
+      )
+
+      if (Either.isLeft(result)) {
+        return result.left._tag === "RcaHandoffIncidentNotFoundError"
+          ? reply.code(404).send({ error: "incident_not_found" })
+          : reply.code(503).send({ error: "rca_handoff_unavailable" })
+      }
+
+      return reply
+        .header(
+          "content-disposition",
+          `attachment; filename="rca-handoff-${result.right.handoffId}.json"`
+        )
+        .code(200)
+        .send(result.right)
     }
   )
 
