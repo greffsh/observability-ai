@@ -238,7 +238,9 @@ Serviços adicionais são cadastrados em
 de impacto normalizados sem alterar as regras de severidade. A stack também
 recebe logs e métricas OpenTelemetry por OTLP; consulte o
 [guia de onboarding](docs/service-onboarding.md) para identidade, configuração
-e limitações de segurança.
+e limitações de segurança. O diagnóstico, os sinais e o procedimento reproduzível
+da integração local do Connect estão em
+[docs/connect-integration.md](docs/connect-integration.md).
 
 O valor acima é somente o padrão local. Um segredo real não deve ser escrito
 em comandos compartilhados, documentação ou logs.

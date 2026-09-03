@@ -114,6 +114,59 @@ describe("deterministic severity", () => {
     expect(result.triggeredRules).toEqual([expect.objectContaining({ code: "INSUFFICIENT_IMPACT_DATA" })])
   })
 
+  it("does not report zero failures when a positive counter has no baseline", () => {
+    const evidence = evidencePackage([
+      metric("metrics-failed", "failedRequests", "checkout_requests_total", [
+        { samples: [[startedAtSeconds, "1"], [startedAtSeconds + 60, "1"]] }
+      ])
+    ])
+
+    const result = classifySeverity(incident, evidence, checkoutServiceCatalog)
+
+    expect(result.signals.failedRequests).toBeNull()
+    expect(result.limitations).toContain("metrics:counter_baseline_missing:failedRequests")
+  })
+
+  it("reports zero when a positive counter is present from the start of the evidence window", () => {
+    const windowStartSeconds = startedAtSeconds - 5 * 60
+    const evidence = evidencePackage([
+      metric("metrics-failed", "failedRequests", "checkout_requests_total", [
+        { samples: [[windowStartSeconds, "1"], [startedAtSeconds, "1"]] }
+      ])
+    ])
+
+    const result = classifySeverity(incident, evidence, checkoutServiceCatalog)
+
+    expect(result.signals.failedRequests).toBe(0)
+    expect(result.limitations).not.toContain("metrics:counter_baseline_missing:failedRequests")
+  })
+
+  it("counts a failure when the counter was initialized at zero", () => {
+    const evidence = evidencePackage([
+      metric("metrics-failed", "failedRequests", "checkout_requests_total", [
+        { samples: [[startedAtSeconds, "0"], [startedAtSeconds + 60, "1"]] }
+      ])
+    ])
+
+    const result = classifySeverity(incident, evidence, checkoutServiceCatalog)
+
+    expect(result.signals.failedRequests).toBe(1)
+    expect(result.limitations).not.toContain("metrics:counter_baseline_missing:failedRequests")
+  })
+
+  it("sums multiple counter series and accounts for a reset", () => {
+    const evidence = evidencePackage([
+      metric("metrics-failed", "failedRequests", "checkout_requests_total", [
+        { samples: [[startedAtSeconds, "5"], [startedAtSeconds + 30, "1"], [startedAtSeconds + 60, "2"]] },
+        { samples: [[startedAtSeconds, "0"], [startedAtSeconds + 60, "3"]] }
+      ])
+    ])
+
+    const result = classifySeverity(incident, evidence, checkoutServiceCatalog)
+
+    expect(result.signals.failedRequests).toBe(5)
+  })
+
   it("produces exactly the same result for the same input", () => {
     const evidence = evidencePackage([availability([[startedAtSeconds, "0"]])])
 

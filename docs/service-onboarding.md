@@ -19,7 +19,7 @@ catálogo exigem reiniciar o Analyzer.
         "severityCeiling": "critica",
         "impactQueries": {
           "totalRequests": "connect_requests_total{service=\"{{service}}\",environment=\"{{environment}}\"}",
-          "failedRequests": "connect_errors_total{service=\"{{service}}\",environment=\"{{environment}}\"}",
+          "failedRequests": "connect_requests_total{service=\"{{service}}\",environment=\"{{environment}}\",outcome=\"failure\"}",
           "availability": "connect_up{service=\"{{service}}\",environment=\"{{environment}}\"}"
         }
       }

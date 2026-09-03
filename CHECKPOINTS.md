@@ -2,7 +2,7 @@
 
 > Documento vivo de requisitos, decisões e progresso da PoC.
 >
-> Última atualização: 2026-08-31
+> Última atualização: 2026-09-02
 
 Considerações específicas para uma implantação futura são mantidas em
 `HOMOLOGACAO.md`; decisões que alterem a PoC continuam sendo registradas neste
@@ -83,7 +83,7 @@ Esses itens podem ser promovidos ao escopo após a validação do núcleo da PoC
 | RF-14 | Registrar, quando disponíveis, o agente/modelo utilizado, duração e custo estimado da análise.   |   Desejável | PENDENTE |
 | RF-15 | Permitir reanalisar um incidente de forma controlada.                                            |   Desejável | PENDENTE |
 | RF-16 | Registrar feedback humano sobre severidade e utilidade do RCA.                                   |   Desejável | PENDENTE |
-| RF-17 | Entregar o contexto do incidente ao agente sem acoplar o Analyzer ao repositório analisado.       | Obrigatório | PENDENTE |
+| RF-17 | Entregar o contexto do incidente ao agente sem acoplar o Analyzer ao repositório analisado.      | Obrigatório | PENDENTE |
 
 ### Requisitos não funcionais
 
@@ -124,36 +124,36 @@ O formato definitivo e os nomes dos campos ainda serão decididos, mas essas inf
 
 ## Decisões técnicas pendentes
 
-| ID    | Decisão                                     | Opções iniciais                                            | Necessária antes de       | Estado   |
-| ----- | ------------------------------------------- | ---------------------------------------------------------- | ------------------------- | -------- |
-| DT-01 | Papel do n8n                                | Removido do escopo inicial                                 | CP-04                     | DECIDIDO |
-| DT-02 | Linguagem do Analyzer                       | TypeScript                                                 | CP-04                     | DECIDIDO |
-| DT-03 | Banco da PoC                                | PostgreSQL                                                 | CP-05                     | DECIDIDO |
-| DT-04 | Fontes de observabilidade locais            | Logs + métricas; traces adiados                            | CP-03                     | DECIDIDO |
-| DT-05 | Agente e modelo de IA                       | Escolhidos pelo operador no momento da análise             | CP-09                     | DECIDIDO |
-| DT-06 | Estratégia de acesso ao modelo              | Execução manual por skill; sem cliente de IA no Analyzer   | CP-09                     | DECIDIDO |
-| DT-07 | Canal inicial de notificação                | Webhook local enviado diretamente pelo Analyzer            | CP-11                     | DECIDIDO |
-| DT-08 | Taxonomia de severidade                     | Informativa, baixa, média, alta, crítica e inconclusiva     | CP-08                     | DECIDIDO |
-| DT-09 | Metadados de criticidade dos serviços       | Catálogo versionado por serviço e ambiente                  | CP-08                     | DECIDIDO |
-| DT-10 | Política de retenção de payloads e análises | A definir                                                  | Antes de usar dados reais | PENDENTE |
-| DT-11 | Framework do Analyzer                       | Effect estável com adoção controlada                       | CP-04                     | DECIDIDO |
-| DT-12 | Framework HTTP                              | Fastify nas aplicações TypeScript                          | CP-03                     | DECIDIDO |
-| DT-13 | Acesso à codebase                           | Repositório local apontado explicitamente ao agente        | CP-09                     | DECIDIDO |
+| ID    | Decisão                                     | Opções iniciais                                          | Necessária antes de       | Estado   |
+| ----- | ------------------------------------------- | -------------------------------------------------------- | ------------------------- | -------- |
+| DT-01 | Papel do n8n                                | Removido do escopo inicial                               | CP-04                     | DECIDIDO |
+| DT-02 | Linguagem do Analyzer                       | TypeScript                                               | CP-04                     | DECIDIDO |
+| DT-03 | Banco da PoC                                | PostgreSQL                                               | CP-05                     | DECIDIDO |
+| DT-04 | Fontes de observabilidade locais            | Logs + métricas; traces adiados                          | CP-03                     | DECIDIDO |
+| DT-05 | Agente e modelo de IA                       | Escolhidos pelo operador no momento da análise           | CP-09                     | DECIDIDO |
+| DT-06 | Estratégia de acesso ao modelo              | Execução manual por skill; sem cliente de IA no Analyzer | CP-09                     | DECIDIDO |
+| DT-07 | Canal inicial de notificação                | Webhook local enviado diretamente pelo Analyzer          | CP-11                     | DECIDIDO |
+| DT-08 | Taxonomia de severidade                     | Informativa, baixa, média, alta, crítica e inconclusiva  | CP-08                     | DECIDIDO |
+| DT-09 | Metadados de criticidade dos serviços       | Catálogo versionado por serviço e ambiente               | CP-08                     | DECIDIDO |
+| DT-10 | Política de retenção de payloads e análises | A definir                                                | Antes de usar dados reais | PENDENTE |
+| DT-11 | Framework do Analyzer                       | Effect estável com adoção controlada                     | CP-04                     | DECIDIDO |
+| DT-12 | Framework HTTP                              | Fastify nas aplicações TypeScript                        | CP-03                     | DECIDIDO |
+| DT-13 | Acesso à codebase                           | Repositório local apontado explicitamente ao agente      | CP-09                     | DECIDIDO |
 
 ## Inventário preliminar de contas e credenciais
 
-| Componente | Conta externa necessária na PoC | Segredo ou identidade local | Observação |
-|---|---|---|---|
-| Docker / Docker Compose | Não | Nenhum | Imagens públicas e ambiente executado localmente. |
-| Grafana OSS | Não | Usuário e senha de administrador local | Não confundir com uma conta Grafana Cloud, que não é necessária. |
-| Webhook Grafana → Analyzer | Não | Segredo compartilhado para autenticar o webhook | Deve ser diferente das credenciais administrativas do Grafana. |
-| Prometheus | Não | Nenhum no ambiente local isolado | Acesso restrito à rede interna do Compose. |
-| Loki | Não | Nenhum nativo na configuração local proposta | Não expor publicamente; Loki não fornece camada de autenticação embutida. |
-| Grafana Alloy | Não | Nenhum | Permissões de coleta devem ser limitadas às fontes necessárias. |
-| PostgreSQL | Não | Usuário e senha próprios do Analyzer | Segredos locais gerados para a PoC e não versionados. |
-| Analyzer | Não | Segredos internos para chamadas recebidas e fechamento operacional | Não recebe credencial de repositório nem de provedor de IA. |
-| Agente de RCA | Depende da ferramenta escolhida pelo operador | Fora do runtime do Analyzer | Recebe o pacote do incidente e acesso explícito a um checkout local. |
-| Canal de chat corporativo | Não no primeiro corte | Futuramente, webhook ou credencial de bot | O primeiro destino será um receptor local. |
+| Componente                 | Conta externa necessária na PoC               | Segredo ou identidade local                                        | Observação                                                                |
+| -------------------------- | --------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| Docker / Docker Compose    | Não                                           | Nenhum                                                             | Imagens públicas e ambiente executado localmente.                         |
+| Grafana OSS                | Não                                           | Usuário e senha de administrador local                             | Não confundir com uma conta Grafana Cloud, que não é necessária.          |
+| Webhook Grafana → Analyzer | Não                                           | Segredo compartilhado para autenticar o webhook                    | Deve ser diferente das credenciais administrativas do Grafana.            |
+| Prometheus                 | Não                                           | Nenhum no ambiente local isolado                                   | Acesso restrito à rede interna do Compose.                                |
+| Loki                       | Não                                           | Nenhum nativo na configuração local proposta                       | Não expor publicamente; Loki não fornece camada de autenticação embutida. |
+| Grafana Alloy              | Não                                           | Nenhum                                                             | Permissões de coleta devem ser limitadas às fontes necessárias.           |
+| PostgreSQL                 | Não                                           | Usuário e senha próprios do Analyzer                               | Segredos locais gerados para a PoC e não versionados.                     |
+| Analyzer                   | Não                                           | Segredos internos para chamadas recebidas e fechamento operacional | Não recebe credencial de repositório nem de provedor de IA.               |
+| Agente de RCA              | Depende da ferramenta escolhida pelo operador | Fora do runtime do Analyzer                                        | Recebe o pacote do incidente e acesso explícito a um checkout local.      |
+| Canal de chat corporativo  | Não no primeiro corte                         | Futuramente, webhook ou credencial de bot                          | O primeiro destino será um receptor local.                                |
 
 Os nomes dos segredos serão definidos no CP-02 e documentados em `.env.example` sem valores reais. Nenhuma chave administrativa de organização deve ser utilizada em tempo de execução quando uma chave restrita ao projeto for suficiente.
 
@@ -700,7 +700,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Generalização pós-entrega:** o classificador não conhece nomes de métricas de nenhum serviço. Um catálogo externo associa `service + environment` a criticidade, teto e consultas PromQL; a coleta converte os resultados em sinais de impacto normalizados antes de aplicar as regras. A `checkout-api` é o primeiro perfil e um novo serviço pode ser cadastrado sem recompilar o Analyzer. O Alloy recebe logs e métricas OTLP e normaliza `service.name` e `deployment.environment.name` para a identidade usada pelo incidente.
 
-**Evidências:** módulo `services/analyzer/src/severity`; endpoint autenticado `POST /v1/incidents/:incidentId/severity`; modos e métricas controláveis em `services/checkout-api`; testes automatizados dos cenários CV-01 (`baixa`), CV-02 (`alta`) e CV-03 (`critica`); 47 testes, typecheck e build aprovados. Após a generalização, CV-03 foi revalidado no incidente `5db1fa0e-b999-42df-acad-d9cee49731a6`, com regra `SERVICE_UNAVAILABLE`, evidência normalizada `metrics-4` e mudança recente explicitamente tratada como não causal. Logs e métrica OTLP de `connect-external/test` também foram recebidos e consultados no Loki e Prometheus.
+**Evidências:** módulo `services/analyzer/src/severity`; endpoint autenticado `POST /v1/incidents/:incidentId/severity`; modos e métricas controláveis em `services/checkout-api`; testes automatizados dos cenários CV-01 (`baixa`), CV-02 (`alta`) e CV-03 (`critica`); 51 testes, typecheck e build aprovados. Após a generalização, CV-03 foi revalidado no incidente `5db1fa0e-b999-42df-acad-d9cee49731a6`, com regra `SERVICE_UNAVAILABLE`, evidência normalizada `metrics-4` e mudança recente explicitamente tratada como não causal. Logs e métrica OTLP de `connect-external/test` também foram recebidos e consultados no Loki e Prometheus. Counters positivos sem amostra-base passaram a produzir sinal desconhecido e limitação explícita, enquanto counters inicializados em zero, resets e múltiplas séries são medidos deterministicamente.
 
 ---
 
@@ -726,6 +726,13 @@ checkout-api ── métricas ──> Prometheus ──┐
 - [ ] Evidência contendo instruções maliciosas é tratada como dado, não como instrução ao agente.
 - [ ] O agente declara quando o contexto ou o checkout são insuficientes.
 - [ ] A execução manual é reproduzível a partir de um incidente controlado e um caminho de repositório explícito.
+
+**Sequência acordada para a próxima fase:**
+
+1. Melhorar a seleção limitada de logs, priorizando erros e o contexto temporal relevante.
+2. Implementar a exportação compacta do contexto do incidente e a skill versionada de RCA.
+3. Gerar e avaliar o primeiro RCA assistido usando um incidente controlado do Connect e seu checkout local.
+4. Adicionar traces em uma iteração posterior e comparar objetivamente a qualidade do RCA com e sem essa fonte.
 
 **Decisões:** DT-05, DT-06 e DT-13 concluídas pela DEC-015.
 
@@ -884,18 +891,18 @@ Os cenários abaixo formam a linha de base aprovada no CP-00. Os valores exatos 
 
 ## Riscos conhecidos
 
-| Risco                                 | Consequência                             | Mitigação inicial                                                      |
-| ------------------------------------- | ---------------------------------------- | ---------------------------------------------------------------------- |
-| Alerta não contém contexto suficiente | RCA genérico ou incorreto                | Buscar evidências nas fontes e permitir resultado inconclusivo         |
-| Correlação incorreta                  | Mistura de incidentes diferentes         | Incluir serviço, ambiente e identidade do alerta na chave              |
-| Alucinação do modelo                  | Ação humana baseada em informação falsa  | Exigir evidências, confiança, limitações e validação estrutural        |
-| Prompt injection por logs             | Desvio da análise ou exposição de dados  | Tratar logs como dados não confiáveis e limitar ferramentas/permissões |
-| Dados sensíveis enviados ao provedor  | Incidente de segurança ou privacidade    | Sanitização, allowlist de campos e política de retenção                |
-| Excesso de notificações               | Canal ignorado pelos operadores          | Deduplicação, cooldown e política de roteamento                        |
-| n8n concentrar regras de negócio      | Baixa testabilidade e difícil evolução   | Manter contratos e regras centrais no Analyzer, caso n8n seja adotado  |
-| Classificação baseada apenas no texto | Severidade incompatível com impacto real | Combinar regras, metadados de serviço e sinais objetivos               |
-| Alloy com acesso ao socket Docker     | Comprometimento do coletor pode afetar o host | Restringir à PoC local; em produção usar coleta isolada e menor privilégio |
-| Buffer assíncrono de logs perdido em queda abrupta | Últimas linhas podem não chegar ao coletor | Flush no encerramento gracioso; aceitar a limitação para `SIGKILL` ou falha do host |
+| Risco                                              | Consequência                                  | Mitigação inicial                                                                   |
+| -------------------------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Alerta não contém contexto suficiente              | RCA genérico ou incorreto                     | Buscar evidências nas fontes e permitir resultado inconclusivo                      |
+| Correlação incorreta                               | Mistura de incidentes diferentes              | Incluir serviço, ambiente e identidade do alerta na chave                           |
+| Alucinação do modelo                               | Ação humana baseada em informação falsa       | Exigir evidências, confiança, limitações e validação estrutural                     |
+| Prompt injection por logs                          | Desvio da análise ou exposição de dados       | Tratar logs como dados não confiáveis e limitar ferramentas/permissões              |
+| Dados sensíveis enviados ao provedor               | Incidente de segurança ou privacidade         | Sanitização, allowlist de campos e política de retenção                             |
+| Excesso de notificações                            | Canal ignorado pelos operadores               | Deduplicação, cooldown e política de roteamento                                     |
+| n8n concentrar regras de negócio                   | Baixa testabilidade e difícil evolução        | Manter contratos e regras centrais no Analyzer, caso n8n seja adotado               |
+| Classificação baseada apenas no texto              | Severidade incompatível com impacto real      | Combinar regras, metadados de serviço e sinais objetivos                            |
+| Alloy com acesso ao socket Docker                  | Comprometimento do coletor pode afetar o host | Restringir à PoC local; em produção usar coleta isolada e menor privilégio          |
+| Buffer assíncrono de logs perdido em queda abrupta | Últimas linhas podem não chegar ao coletor    | Flush no encerramento gracioso; aceitar a limitação para `SIGKILL` ou falha do host |
 
 ## Registro de decisões
 
@@ -1075,33 +1082,34 @@ Usar uma entrada por decisão tomada:
 
 ## Histórico de atualizações
 
-| Data       | Alteração                                                       | Responsável |
-| ---------- | --------------------------------------------------------------- | ----------- |
-| 2026-08-27 | Criação da fonte da verdade, requisitos e checkpoints iniciais. | Codex       |
-| 2026-08-27 | CP-00 iniciado com cenários e métricas propostos para discussão. | Codex       |
-| 2026-08-27 | CP-00 concluído; CP-01 iniciado com stack e credenciais propostas. | Codex       |
-| 2026-08-27 | TypeScript aprovado; Effect e notificação direta registrados para discussão. | Codex       |
-| 2026-08-27 | CP-01 concluído com n8n removido e notificação direta aprovada. | Codex       |
-| 2026-08-27 | CP-02 concluído com ambiente local reproduzível e seis serviços saudáveis. | Codex       |
-| 2026-08-27 | CP-03 dividido em entregas menores; CP-03A concluído com falha controlável. | Codex       |
-| 2026-08-27 | CP-03A.1 concluído com Fastify nas duas bordas HTTP. | Codex       |
-| 2026-08-27 | CP-03B concluído com logs estruturados coletados pelo Alloy e consultados no Loki. | Codex       |
-| 2026-08-27 | CP-03 e CP-03C concluídos com métricas coletadas e consultadas através do Grafana. | Codex       |
-| 2026-08-27 | Logs automáticos de requests removidos; eventos semânticos preservados. | Codex       |
-| 2026-08-27 | CP-04 iniciado; CP-04A concluído com schemas e fixtures testados. | Codex       |
-| 2026-08-28 | CP-04B concluído com ingestão autenticada e normalização all-or-nothing. | Codex       |
-| 2026-08-28 | CP-04 e CP-04C concluídos com alerta real firing/resolved entregue pelo Grafana. | Codex       |
-| 2026-08-28 | CP-05 iniciado; CP-05A registra o modelo mínimo de persistência para auditoria. | Codex       |
-| 2026-08-28 | CP-05A e CP-05B concluídos com schema PostgreSQL e migrations idempotentes. | Codex       |
-| 2026-08-28 | Logs do Analyzer padronizados em Effect com sink Pino assíncrono e flush gracioso. | Codex       |
-| 2026-08-28 | CP-05 e CP-05C concluídos com persistência, idempotência e consulta de eventos. | Codex       |
-| 2026-08-28 | CP-06A iniciado; incidentes permanecem separados por ocorrência e resolução órfã reconstrói um incidente parcial. | Codex       |
-| 2026-08-28 | CP-06A concluído com identidade, estados e casos-limite aprovados; CP-06B aberto para auditoria do schema. | Codex       |
-| 2026-08-31 | CP-06 concluído com modelo persistido, correlação transacional, ciclo de vida, consulta e testes de eventos fora de ordem. | Codex       |
-| 2026-08-31 | CP-07 concluído com pacote limitado e sanitizado de alertas, métricas e logs, tolerando falhas parciais. | Codex       |
-| 2026-08-31 | CP-08 iniciado como marco da entrega atual; auditoria identificou sinais ausentes para reproduzir CV-03 com responsabilidade. | Codex       |
-| 2026-08-31 | CP-08 e a primeira entrega concluídos com severidade determinística, catálogo versionado e CV-01 a CV-03 testados. | Codex       |
-| 2026-08-31 | CP-06D concluiu a migração 1:N entre incidentes e ocorrências, preservando dados e validando agregação real no PostgreSQL. | Codex       |
-| 2026-09-01 | CP-06E concluiu o fechamento manual auditável, com credencial de operador separada e estado `closed` terminal. | Codex       |
-| 2026-09-02 | Integração direta com repositório removida; RCA seguirá por handoff manual para um agente com checkout local explícito. | Codex       |
-| 2026-09-02 | Coleta e severidade generalizadas por perfil de serviço e sinais de impacto; entrada OTLP preparada para serviços externos. | Codex       |
+| Data       | Alteração                                                                                                                                                                          | Responsável |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| 2026-08-27 | Criação da fonte da verdade, requisitos e checkpoints iniciais.                                                                                                                    | Codex       |
+| 2026-08-27 | CP-00 iniciado com cenários e métricas propostos para discussão.                                                                                                                   | Codex       |
+| 2026-08-27 | CP-00 concluído; CP-01 iniciado com stack e credenciais propostas.                                                                                                                 | Codex       |
+| 2026-08-27 | TypeScript aprovado; Effect e notificação direta registrados para discussão.                                                                                                       | Codex       |
+| 2026-08-27 | CP-01 concluído com n8n removido e notificação direta aprovada.                                                                                                                    | Codex       |
+| 2026-08-27 | CP-02 concluído com ambiente local reproduzível e seis serviços saudáveis.                                                                                                         | Codex       |
+| 2026-08-27 | CP-03 dividido em entregas menores; CP-03A concluído com falha controlável.                                                                                                        | Codex       |
+| 2026-08-27 | CP-03A.1 concluído com Fastify nas duas bordas HTTP.                                                                                                                               | Codex       |
+| 2026-08-27 | CP-03B concluído com logs estruturados coletados pelo Alloy e consultados no Loki.                                                                                                 | Codex       |
+| 2026-08-27 | CP-03 e CP-03C concluídos com métricas coletadas e consultadas através do Grafana.                                                                                                 | Codex       |
+| 2026-08-27 | Logs automáticos de requests removidos; eventos semânticos preservados.                                                                                                            | Codex       |
+| 2026-08-27 | CP-04 iniciado; CP-04A concluído com schemas e fixtures testados.                                                                                                                  | Codex       |
+| 2026-08-28 | CP-04B concluído com ingestão autenticada e normalização all-or-nothing.                                                                                                           | Codex       |
+| 2026-08-28 | CP-04 e CP-04C concluídos com alerta real firing/resolved entregue pelo Grafana.                                                                                                   | Codex       |
+| 2026-08-28 | CP-05 iniciado; CP-05A registra o modelo mínimo de persistência para auditoria.                                                                                                    | Codex       |
+| 2026-08-28 | CP-05A e CP-05B concluídos com schema PostgreSQL e migrations idempotentes.                                                                                                        | Codex       |
+| 2026-08-28 | Logs do Analyzer padronizados em Effect com sink Pino assíncrono e flush gracioso.                                                                                                 | Codex       |
+| 2026-08-28 | CP-05 e CP-05C concluídos com persistência, idempotência e consulta de eventos.                                                                                                    | Codex       |
+| 2026-08-28 | CP-06A iniciado; incidentes permanecem separados por ocorrência e resolução órfã reconstrói um incidente parcial.                                                                  | Codex       |
+| 2026-08-28 | CP-06A concluído com identidade, estados e casos-limite aprovados; CP-06B aberto para auditoria do schema.                                                                         | Codex       |
+| 2026-08-31 | CP-06 concluído com modelo persistido, correlação transacional, ciclo de vida, consulta e testes de eventos fora de ordem.                                                         | Codex       |
+| 2026-08-31 | CP-07 concluído com pacote limitado e sanitizado de alertas, métricas e logs, tolerando falhas parciais.                                                                           | Codex       |
+| 2026-08-31 | CP-08 iniciado como marco da entrega atual; auditoria identificou sinais ausentes para reproduzir CV-03 com responsabilidade.                                                      | Codex       |
+| 2026-08-31 | CP-08 e a primeira entrega concluídos com severidade determinística, catálogo versionado e CV-01 a CV-03 testados.                                                                 | Codex       |
+| 2026-08-31 | CP-06D concluiu a migração 1:N entre incidentes e ocorrências, preservando dados e validando agregação real no PostgreSQL.                                                         | Codex       |
+| 2026-09-01 | CP-06E concluiu o fechamento manual auditável, com credencial de operador separada e estado `closed` terminal.                                                                     | Codex       |
+| 2026-09-02 | Integração direta com repositório removida; RCA seguirá por handoff manual para um agente com checkout local explícito.                                                            | Codex       |
+| 2026-09-02 | Coleta e severidade generalizadas por perfil de serviço e sinais de impacto; entrada OTLP preparada para serviços externos.                                                        | Codex       |
+| 2026-09-02 | Connect integrado localmente via OTLP com logs, métricas cumulativas, alerta firing/resolved, incidente, severidade alta por indisponibilidade e fechamento operacional validados. | Codex       |

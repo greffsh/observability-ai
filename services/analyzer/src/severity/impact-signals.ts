@@ -7,6 +7,7 @@ type MetricSeries = {
 
 type MetricData = {
   readonly signal?: ImpactMetricSignal
+  readonly stepSeconds?: number
   readonly series?: ReadonlyArray<MetricSeries>
 }
 
@@ -22,6 +23,7 @@ export type ImpactSignals = {
 export type ImpactMeasurement = {
   readonly signals: ImpactSignals
   readonly evidenceIds: Readonly<Partial<Record<ImpactMetricSignal, string>>>
+  readonly limitations: ReadonlyArray<string>
 }
 
 const samplesOf = (series: MetricSeries): ReadonlyArray<readonly [number, number]> =>
@@ -30,9 +32,22 @@ const samplesOf = (series: MetricSeries): ReadonlyArray<readonly [number, number
     .filter(([, value]) => Number.isFinite(value))
     .sort(([left], [right]) => left - right)
 
-const counterIncrease = (series: MetricSeries): number | null => {
+type CounterIncrease = {
+  readonly value: number | null
+  readonly baselineMissing: boolean
+}
+
+const counterIncrease = (
+  series: MetricSeries,
+  baselineDeadlineSeconds: number
+): CounterIncrease => {
   const samples = samplesOf(series)
-  if (samples.length < 2) return null
+  if (samples.length < 2) {
+    return {
+      value: null,
+      baselineMissing: (samples[0]?.[1] ?? 0) > 0
+    }
+  }
 
   let increase = 0
   for (let index = 1; index < samples.length; index += 1) {
@@ -41,12 +56,31 @@ const counterIncrease = (series: MetricSeries): number | null => {
     if (previous === undefined || current === undefined) continue
     increase += current >= previous ? current - previous : current
   }
-  return increase
+  if (
+    increase === 0 &&
+    (samples[0]?.[1] ?? 0) > 0 &&
+    (samples[0]?.[0] ?? Number.POSITIVE_INFINITY) > baselineDeadlineSeconds
+  ) {
+    return { value: null, baselineMissing: true }
+  }
+
+  return { value: increase, baselineMissing: false }
 }
 
 const sumKnown = (values: ReadonlyArray<number | null>): number | null => {
-  const known = values.filter((value): value is number => value !== null)
-  return known.length === 0 ? null : known.reduce((sum, value) => sum + value, 0)
+  if (values.length === 0 || values.some((value) => value === null)) return null
+  return values.reduce<number>((sum, value) => sum + (value ?? 0), 0)
+}
+
+const measureCounter = (
+  series: ReadonlyArray<MetricSeries>,
+  baselineDeadlineSeconds: number
+) => {
+  const measurements = series.map((item) => counterIncrease(item, baselineDeadlineSeconds))
+  return {
+    value: sumKnown(measurements.map((measurement) => measurement.value)),
+    baselineMissing: measurements.some((measurement) => measurement.baselineMissing)
+  }
 }
 
 const minimumSample = (series: ReadonlyArray<MetricSeries>): number | null => {
@@ -83,9 +117,14 @@ const latestPositiveSample = (series: ReadonlyArray<MetricSeries>): Date | null 
 
 const metricEvidenceBySignal = (
   evidencePackage: EvidencePackage
-): Readonly<Partial<Record<ImpactMetricSignal, { item: EvidenceItem; series: ReadonlyArray<MetricSeries> }>>> => {
+): Readonly<Partial<Record<ImpactMetricSignal, {
+  item: EvidenceItem
+  stepSeconds: number
+  series: ReadonlyArray<MetricSeries>
+}>>> => {
   const result: Partial<Record<ImpactMetricSignal, {
     item: EvidenceItem
+    stepSeconds: number
     series: ReadonlyArray<MetricSeries>
   }>> = {}
 
@@ -93,7 +132,11 @@ const metricEvidenceBySignal = (
     if (item.source !== "metrics" || typeof item.data !== "object" || item.data === null) continue
     const data = item.data as MetricData
     if (data.signal === undefined || !Array.isArray(data.series)) continue
-    result[data.signal] = { item, series: data.series }
+    result[data.signal] = {
+      item,
+      stepSeconds: typeof data.stepSeconds === "number" ? data.stepSeconds : 0,
+      series: data.series
+    }
   }
 
   return result
@@ -101,16 +144,27 @@ const metricEvidenceBySignal = (
 
 export const measureImpact = (evidencePackage: EvidencePackage): ImpactMeasurement => {
   const evidence = metricEvidenceBySignal(evidencePackage)
-  const totalRequests = sumKnown(evidence.totalRequests?.series.map(counterIncrease) ?? [])
-  const failedRequests = sumKnown(evidence.failedRequests?.series.map(counterIncrease) ?? [])
-  const errorRate = totalRequests !== null && failedRequests !== null && totalRequests > 0
-    ? failedRequests / totalRequests
+  const windowStartSeconds = evidencePackage.window.start.getTime() / 1_000
+  const totalRequests = measureCounter(
+    evidence.totalRequests?.series ?? [],
+    windowStartSeconds + (evidence.totalRequests?.stepSeconds ?? 0) * 2
+  )
+  const failedRequests = measureCounter(
+    evidence.failedRequests?.series ?? [],
+    windowStartSeconds + (evidence.failedRequests?.stepSeconds ?? 0) * 2
+  )
+  const errorRate = totalRequests.value !== null && failedRequests.value !== null && totalRequests.value > 0
+    ? failedRequests.value / totalRequests.value
     : null
+  const limitations = [
+    totalRequests.baselineMissing ? "metrics:counter_baseline_missing:totalRequests" : null,
+    failedRequests.baselineMissing ? "metrics:counter_baseline_missing:failedRequests" : null
+  ].filter((limitation): limitation is string => limitation !== null)
 
   return {
     signals: {
-      failedRequests,
-      totalRequests,
+      failedRequests: failedRequests.value,
+      totalRequests: totalRequests.value,
       errorRate,
       sustainedFailureSeconds: evidence.failureState === undefined
         ? null
@@ -124,6 +178,7 @@ export const measureImpact = (evidencePackage: EvidencePackage): ImpactMeasureme
     },
     evidenceIds: Object.fromEntries(
       Object.entries(evidence).map(([signal, value]) => [signal, value.item.id])
-    )
+    ),
+    limitations
   }
 }

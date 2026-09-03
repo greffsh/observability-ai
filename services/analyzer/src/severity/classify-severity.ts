@@ -46,6 +46,7 @@ export const classifySeverity = (
   const limitations: Array<string> = evidencePackage.limitations.map(
     (limitation) => `${limitation.source}:${limitation.code}`
   )
+  limitations.push(...measurement.limitations)
 
   if (recentChange === true) {
     observations.push("Uma mudança foi registrada até 10 minutos antes do incidente; isso é contexto, não prova de causa.")
