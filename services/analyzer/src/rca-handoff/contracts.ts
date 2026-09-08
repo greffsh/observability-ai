@@ -9,6 +9,8 @@ export type RcaHandoffIncident = {
   readonly status: IncidentStatus
   readonly service: string
   readonly environment: string
+  readonly incidentScope: string
+  readonly mergedIntoIncidentId: string | null
   readonly detectedAt: Date
   readonly lastActivityAt: Date
   readonly signalsClearedAt: Date | null

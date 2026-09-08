@@ -1,7 +1,8 @@
 # Onboarding de serviços
 
-O Analyzer identifica um serviço pelo par canônico `service + environment`. O
-mesmo par precisa chegar nos alertas do Grafana e estar disponível como labels
+O Analyzer identifica um serviço pelo par canônico `service + environment` e
+correlaciona somente ocorrências com o mesmo `incident_scope`. O mesmo par
+precisa chegar nos alertas do Grafana e estar disponível como labels
 consultáveis nos logs. Métricas específicas são traduzidas em sinais de impacto
 por um perfil versionado.
 
@@ -18,8 +19,8 @@ catálogo exigem reiniciar o Analyzer.
       "production": {
         "severityCeiling": "critica",
         "impactQueries": {
-          "totalRequests": "connect_requests_total{service=\"{{service}}\",environment=\"{{environment}}\"}",
-          "failedRequests": "connect_requests_total{service=\"{{service}}\",environment=\"{{environment}}\",outcome=\"failure\"}",
+          "totalRequests": "http_server_requests_total{service=\"{{service}}\",environment=\"{{environment}}\"}",
+          "failedRequests": "http_server_requests_total{service=\"{{service}}\",environment=\"{{environment}}\",outcome=\"failure\"}",
           "availability": "connect_up{service=\"{{service}}\",environment=\"{{environment}}\"}"
         }
       }
@@ -68,7 +69,13 @@ que representa um sinal do Connect precisa enviar pelo menos:
 labels:
   service: connect
   environment: production
+  incident_scope: http
 ```
+
+`incident_scope` reúne sinais semanticamente compatíveis, como taxa de erros e
+indisponibilidade HTTP. Quando a label estiver ausente ou vazia, o Analyzer usa
+o `alertname` como fallback conservador; alertas diferentes não são unidos só
+porque pertencem ao mesmo serviço e ambiente.
 
 O Analyzer aceita o webhook, cria eventos, ocorrências e incidentes, consulta o
 perfil correspondente e coleta o contexto disponível. Um serviço sem perfil ou

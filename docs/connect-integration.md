@@ -28,8 +28,8 @@ enviados por OTLP/gRPC. Os sinais métricos são:
 
 | Significado | Métrica no Prometheus | Tipo/temporariedade |
 |---|---|---|
-| Requisições | `connect_http_requests_total` | counter cumulativo |
-| Erros HTTP 5xx | `connect_http_requests_total{outcome="failure"}` | série do counter cumulativo de requisições |
+| Requisições | `http_server_requests_total` | counter cumulativo |
+| Erros HTTP 5xx | `http_server_requests_total{outcome="failure"}` | série do counter cumulativo de requisições |
 | Falha controlada ativa | `connect_failure_state` | gauge, `0` ou `1` |
 | Disponibilidade | `connect_availability` | gauge, `0` ou `1` |
 | Última mudança | `connect_last_change_timestamp_seconds` | gauge com timestamp Unix em segundos |
@@ -45,6 +45,13 @@ como desconhecido e registra `metrics:counter_baseline_missing`.
 O catálogo usa exatamente esses nomes. Para esta PoC local, a criticidade foi
 registrada conservadoramente como `medium` e o teto como `alta`; essa premissa
 operacional precisa ser validada antes de cadastrar outro ambiente.
+
+O Grafana também provisiona uma regra multidimensional sobre o aumento de
+`http_server_requests_total{outcome="failure"}` no último minuto. Cada combinação
+de `service + environment` produz sua própria instância e envia
+`incident_scope=http`. Assim, respostas HTTP 5xx reais acionam o Analyzer sem
+depender do gauge de falha controlada. A regra sintética usa o mesmo escopo para
+que indisponibilidade e erros HTTP compatíveis pertençam ao mesmo incidente.
 
 ## Execução local
 
@@ -96,3 +103,13 @@ desta PoC não provisiona um pipeline para eles; por isso a execução local usa
 do escopo. A execução também desabilita os detectores automáticos de recurso
 para que nome do host, usuário e caminho do processo não sejam enviados à PoC;
 somente a identidade explícita do serviço é necessária para este teste.
+
+## Validação multi-alerta
+
+Em 2026-09-08, duas respostas `503` orgânicas de `GET /ping` foram produzidas
+durante a falha controlada. O Grafana disparou tanto “Connect controlled failure
+active” quanto “HTTP server errors detected”. O Analyzer criou duas ocorrências
+com `incident_scope=scope:http` dentro de um único incidente `open`. Depois da
+recuperação, ambas foram resolvidas e o mesmo incidente transitou para
+`awaiting_confirmation`. Isso exercita a correlação de alertas distintos; o
+gauge controlado é apenas um dos sinais, não a condição da regra HTTP genérica.

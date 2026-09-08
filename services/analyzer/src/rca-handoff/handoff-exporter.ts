@@ -49,6 +49,8 @@ const compactIncident = (incident: Incident, maxStringLength: number) => ({
   status: incident.status,
   service: sanitizeString(incident.service, maxStringLength),
   environment: sanitizeString(incident.environment, maxStringLength),
+  incidentScope: sanitizeString(incident.incidentScope, maxStringLength),
+  mergedIntoIncidentId: incident.mergedIntoIncidentId,
   detectedAt: incident.detectedAt,
   lastActivityAt: incident.lastActivityAt,
   signalsClearedAt: incident.signalsClearedAt,

@@ -157,11 +157,13 @@ describe("Analyzer HTTP API", () => {
         id: "memory-incident-1",
         service: "checkout-api",
         environment: "local",
+        incidentScope: "alert:Checkout failure mode enabled",
         status: "open",
         detectedAt: "2026-08-28T13:21:00.000Z",
         lastActivityAt: "2026-08-28T13:21:00.000Z",
         signalsClearedAt: null,
-        activeAlerts: 1
+        activeAlerts: 1,
+        mergedIntoIncidentId: null
       }]
     })
   })

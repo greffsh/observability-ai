@@ -62,6 +62,41 @@ groups:
         labels:
           service: connect
           environment: local
+          incident_scope: http
+          signal: controlled_failure
+          severity: warning
+        isPaused: false
+
+      - uid: http-server-errors
+        title: HTTP server errors detected
+        condition: A
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: sum by (service, environment) (increase(http_server_requests_total{outcome="failure"}[1m])) > 0
+              instant: true
+              intervalMs: 1000
+              legendFormat: __auto
+              maxDataPoints: 43200
+              range: false
+              refId: A
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: HTTP server errors detected for {{ $labels.service }}
+          description: One or more organic HTTP 5xx responses were observed in the last minute.
+        labels:
+          incident_scope: http
+          signal: http_errors
           severity: warning
         isPaused: false
 

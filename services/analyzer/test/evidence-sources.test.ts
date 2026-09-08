@@ -12,6 +12,8 @@ const incident: Incident = {
   status: "awaiting_confirmation",
   service: "checkout-api",
   environment: "local",
+  incidentScope: "alert:Checkout unavailable",
+  mergedIntoIncidentId: null,
   detectedAt: new Date("2026-08-31T10:00:00Z"),
   lastActivityAt: new Date("2026-08-31T10:05:00Z"),
   signalsClearedAt: new Date("2026-08-31T10:05:00Z"),

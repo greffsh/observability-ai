@@ -24,6 +24,14 @@ _Avoid_: Evento, alerta do Grafana
 Vínculo auditável entre uma ocorrência de alerta e o incidente operacional ao qual ela fornece evidência.
 _Avoid_: Causalidade, agrupamento de eventos
 
+**Associação provisória**:
+Associação sustentada por pelo menos uma ocorrência ainda aberta e que pode ser revista quando um evento posterior delimitar seu intervalo real.
+_Avoid_: Associação definitiva, causalidade presumida
+
+**Escopo de correlação**:
+Identidade operacional compartilhada por ocorrências que podem pertencer ao mesmo incidente. Compatibilidade de escopo permite associação, mas não afirma causalidade.
+_Avoid_: Causa raiz, assinatura de erro, serviço
+
 **Ocorrência reconstruída**:
 Ocorrência conhecida inicialmente por um evento `resolved`, sem que o Analyzer tenha observado antes seu `firing`; seu ciclo de vida é explicitamente parcial.
 _Avoid_: Ocorrência inválida, evento órfão

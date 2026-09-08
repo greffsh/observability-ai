@@ -263,6 +263,8 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
         id: incident.id,
         service: incident.service,
         environment: incident.environment,
+        incidentScope: incident.incidentScope,
+        mergedIntoIncidentId: incident.mergedIntoIncidentId,
         status: incident.status,
         detectedAt: incident.detectedAt,
         lastActivityAt: incident.lastActivityAt,

@@ -2,6 +2,13 @@ import { PgClient } from "@effect/sql-pg"
 import { Effect, Option } from "effect"
 import type { AlertEvent } from "../contracts/alert-event.js"
 import { correlationKeyFor, type AlertOccurrence } from "../domain/alert-occurrence.js"
+import {
+  correlateOccurrence,
+  incidentCorrelationPolicyVersion,
+  incidentScopeFor,
+  partitionIncidentOccurrences,
+  type IncidentCorrelationCandidate
+} from "../domain/incident-correlation.js"
 import type {
   Incident,
   IncidentClosureReason
@@ -37,9 +44,11 @@ type IdRow = { readonly id: string }
 
 type IncidentRow = {
   readonly id: string
-  readonly status: "open" | "awaiting_confirmation" | "closed"
+  readonly status: "open" | "awaiting_confirmation" | "closed" | "merged"
   readonly service: string
   readonly environment: string
+  readonly incidentScope: string
+  readonly mergedIntoIncidentId: string | null
   readonly detectedAt: Date
   readonly lastActivityAt: Date
   readonly signalsClearedAt: Date | null
@@ -55,6 +64,10 @@ type IncidentRow = {
 
 type IncidentSummaryRow = IncidentRow & {
   readonly activeAlerts: number
+}
+
+type IncidentCandidateRow = IncidentRow & {
+  readonly openOccurrences: number
 }
 
 const eventPayload = (event: AlertEvent) => ({
@@ -92,6 +105,8 @@ const rowToIncident = (row: IncidentRow): Incident => ({
   status: row.status,
   service: row.service,
   environment: row.environment,
+  incidentScope: row.incidentScope,
+  mergedIntoIncidentId: row.mergedIntoIncidentId,
   detectedAt: row.detectedAt,
   lastActivityAt: row.lastActivityAt,
   signalsClearedAt: row.signalsClearedAt,
@@ -141,8 +156,109 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
         GROUP BY relation.incident_id
       ) AS aggregate
       WHERE incident.id = aggregate.incident_id
-        AND incident.status <> 'closed'
+        AND incident.status NOT IN ('closed', 'merged')
     `
+
+    const splitIncidentIfDisconnected = (incidentId: string) => Effect.gen(function* () {
+      const incidentRows = yield* sql<IncidentRow>`
+        SELECT
+          id, status, service, environment,
+          incident_scope AS "incidentScope",
+          merged_into_incident_id AS "mergedIntoIncidentId",
+          detected_at AS "detectedAt",
+          last_activity_at AS "lastActivityAt",
+          signals_cleared_at AS "signalsClearedAt",
+          closed_at AS "closedAt",
+          closure_method AS "closureMethod",
+          closure_reason AS "closureReason",
+          closed_by AS "closedBy",
+          closure_note AS "closureNote",
+          closure_policy_version AS "closurePolicyVersion",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM incidents
+        WHERE id = ${incidentId}
+          AND status NOT IN ('closed', 'merged')
+        LIMIT 1
+        FOR UPDATE
+      `
+      if (incidentRows.length === 0) return
+
+      const related = yield* sql<AlertOccurrence>`
+        SELECT
+          occurrence.id,
+          occurrence.correlation_key AS "correlationKey",
+          occurrence.incident_scope AS "incidentScope",
+          occurrence.status,
+          occurrence.alert_name AS "alertName",
+          occurrence.service,
+          occurrence.environment,
+          occurrence.alert_fingerprint AS "alertFingerprint",
+          occurrence.started_at AS "startedAt",
+          occurrence.ended_at AS "endedAt",
+          occurrence.firing_observed AS "firingObserved",
+          occurrence.created_at AS "createdAt",
+          occurrence.updated_at AS "updatedAt"
+        FROM alert_occurrences AS occurrence
+        JOIN incident_occurrences AS relation
+          ON relation.occurrence_id = occurrence.id
+        WHERE relation.incident_id = ${incidentId}
+      `
+      const partitions = partitionIncidentOccurrences(related)
+      if (partitions.length <= 1) return
+
+      for (const partition of partitions.slice(1)) {
+        const first = partition[0]!
+        const hasOpenOccurrence = partition.some((occurrence) => occurrence.status === "open")
+        const lastActivityAt = partition.reduce((latest, occurrence) => {
+          const activity = occurrence.endedAt ?? occurrence.startedAt
+          return activity > latest ? activity : latest
+        }, first.startedAt)
+        const created = yield* sql<IdRow>`
+          INSERT INTO incidents (
+            status, service, environment, incident_scope,
+            detected_at, last_activity_at, signals_cleared_at
+          ) VALUES (
+            ${hasOpenOccurrence ? "open" : "awaiting_confirmation"},
+            ${first.service}, ${first.environment}, ${first.incidentScope},
+            ${first.startedAt}, ${lastActivityAt},
+            ${hasOpenOccurrence ? null : lastActivityAt}
+          )
+          RETURNING id
+        `
+        const targetIncidentId = created[0]?.id
+        if (targetIncidentId === undefined) {
+          return yield* Effect.dieMessage(`Could not split incident ${incidentId}`)
+        }
+
+        for (const occurrence of partition) {
+          yield* sql`
+            UPDATE incident_occurrences
+            SET
+              incident_id = ${targetIncidentId},
+              associated_at = now(),
+              association_method = 'split_reconciliation',
+              policy_version = ${incidentCorrelationPolicyVersion},
+              association_metadata = ${sql.json({
+                sourceIncidentId: incidentId,
+                reason: "disconnected_after_interval_closed"
+              })}
+            WHERE occurrence_id = ${occurrence.id}
+          `
+          yield* sql`
+            INSERT INTO incident_splits (
+              source_incident_id, target_incident_id, occurrence_id,
+              policy_version, reason
+            ) VALUES (
+              ${incidentId}, ${targetIncidentId}, ${occurrence.id},
+              ${incidentCorrelationPolicyVersion}, 'disconnected_after_interval_closed'
+            )
+          `
+        }
+      }
+
+      yield* refreshIncident(incidentId)
+    })
 
     const eventSelection = sql`
       SELECT
@@ -172,6 +288,8 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
     const incidentSelection = sql`
       SELECT
         id, status, service, environment,
+        incident_scope AS "incidentScope",
+        merged_into_incident_id AS "mergedIntoIncidentId",
         detected_at AS "detectedAt",
         last_activity_at AS "lastActivityAt",
         signals_cleared_at AS "signalsClearedAt",
@@ -210,6 +328,7 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
             }
 
             const correlationKey = correlationKeyFor(event)
+            const incidentScope = incidentScopeFor(event)
             const scopeKey = `${event.environment}:${event.service}`
 
             const matchingOccurrences = yield* sql<IdRow>`
@@ -247,6 +366,15 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
                 WHERE occurrence_id = ${occurrenceId}
               `
               incidentId = relations[0]?.id
+              if (event.state === "resolved" && incidentId !== undefined) {
+                yield* splitIncidentIfDisconnected(incidentId)
+                const reconciledRelations = yield* sql<IdRow>`
+                  SELECT incident_id AS id
+                  FROM incident_occurrences
+                  WHERE occurrence_id = ${occurrenceId}
+                `
+                incidentId = reconciledRelations[0]?.id
+              }
             } else {
               if (event.state === "firing") {
                 const superseded = yield* sql<IdRow>`
@@ -268,10 +396,10 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
 
               const createdOccurrences = yield* sql<IdRow>`
                 INSERT INTO alert_occurrences (
-                  correlation_key, status, alert_name, service, environment,
+                  correlation_key, incident_scope, status, alert_name, service, environment,
                   alert_fingerprint, started_at, ended_at, firing_observed
                 ) VALUES (
-                  ${correlationKey},
+                  ${correlationKey}, ${incidentScope},
                   ${event.state === "firing" ? "open" : "resolved"},
                   ${event.alertName}, ${event.service}, ${event.environment},
                   ${event.alertFingerprint}, ${event.startedAt}, ${event.endedAt},
@@ -284,31 +412,102 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
                 return yield* Effect.dieMessage(`Could not create occurrence for ${event.eventId}`)
               }
 
-              const candidates = yield* sql<IdRow>`
-                SELECT id
-                FROM incidents
-                WHERE status <> 'closed'
-                  AND service = ${event.service}
-                  AND environment = ${event.environment}
-                  AND detected_at <= ${new Date(event.startedAt.getTime() + 10 * 60 * 1_000)}
-                  AND last_activity_at >= ${new Date(event.startedAt.getTime() - 10 * 60 * 1_000)}
-                ORDER BY last_activity_at DESC
-                LIMIT 2
+              const candidates = yield* sql<IncidentCandidateRow>`
+                SELECT
+                  incident.id, incident.status, incident.service, incident.environment,
+                  incident.incident_scope AS "incidentScope",
+                  incident.merged_into_incident_id AS "mergedIntoIncidentId",
+                  incident.detected_at AS "detectedAt",
+                  incident.last_activity_at AS "lastActivityAt",
+                  incident.signals_cleared_at AS "signalsClearedAt",
+                  incident.closed_at AS "closedAt",
+                  incident.closure_method AS "closureMethod",
+                  incident.closure_reason AS "closureReason",
+                  incident.closed_by AS "closedBy",
+                  incident.closure_note AS "closureNote",
+                  incident.closure_policy_version AS "closurePolicyVersion",
+                  incident.created_at AS "createdAt",
+                  incident.updated_at AS "updatedAt",
+                  (
+                    SELECT count(*)::integer
+                    FROM incident_occurrences AS relation
+                    JOIN alert_occurrences AS related_occurrence
+                      ON related_occurrence.id = relation.occurrence_id
+                    WHERE relation.incident_id = incident.id
+                      AND related_occurrence.status = 'open'
+                  ) AS "openOccurrences"
+                FROM incidents AS incident
+                WHERE incident.status NOT IN ('closed', 'merged')
+                  AND incident.service = ${event.service}
+                  AND incident.environment = ${event.environment}
+                  AND incident.incident_scope = ${incidentScope}
                 FOR UPDATE
               `
 
+              const occurrenceForCorrelation: AlertOccurrence = {
+                id: occurrenceId,
+                correlationKey,
+                incidentScope,
+                status: event.state === "firing" ? "open" : "resolved",
+                alertName: event.alertName,
+                service: event.service,
+                environment: event.environment,
+                alertFingerprint: event.alertFingerprint,
+                startedAt: event.startedAt,
+                endedAt: event.endedAt,
+                firingObserved: event.state === "firing",
+                createdAt: event.receivedAt,
+                updatedAt: event.receivedAt
+              }
+              const decision = correlateOccurrence(
+                occurrenceForCorrelation,
+                candidates satisfies ReadonlyArray<IncidentCorrelationCandidate>
+              )
+
               let associationMethod: "scope_and_time" | "new_incident"
-              if (candidates.length === 1 && candidates[0] !== undefined) {
-                incidentId = candidates[0].id
+              if (decision.outcome === "associate") {
+                incidentId = decision.incidentId
                 associationMethod = "scope_and_time"
+
+                for (const mergedIncidentId of decision.mergedIncidentIds) {
+                  yield* sql`
+                    UPDATE incident_occurrences
+                    SET incident_id = ${incidentId}
+                    WHERE incident_id = ${mergedIncidentId}
+                  `
+                  yield* sql`
+                    UPDATE incidents
+                    SET
+                      status = 'merged',
+                      signals_cleared_at = coalesce(signals_cleared_at, last_activity_at),
+                      merged_into_incident_id = ${incidentId},
+                      closed_at = NULL,
+                      closure_method = NULL,
+                      closure_reason = NULL,
+                      closed_by = NULL,
+                      closure_note = NULL,
+                      closure_policy_version = NULL,
+                      updated_at = now()
+                    WHERE id = ${mergedIncidentId}
+                  `
+                  yield* sql`
+                    INSERT INTO incident_merges (
+                      merged_incident_id, canonical_incident_id, policy_version, reason
+                    ) VALUES (
+                      ${mergedIncidentId}, ${incidentId},
+                      ${incidentCorrelationPolicyVersion}, 'connected_by_occurrence'
+                    )
+                  `
+                }
               } else {
                 const createdIncidents = yield* sql<IdRow>`
                   INSERT INTO incidents (
-                    status, service, environment, detected_at, last_activity_at,
+                    status, service, environment, incident_scope,
+                    detected_at, last_activity_at,
                     signals_cleared_at
                   ) VALUES (
                     ${event.state === "firing" ? "open" : "awaiting_confirmation"},
-                    ${event.service}, ${event.environment}, ${event.startedAt},
+                    ${event.service}, ${event.environment}, ${incidentScope}, ${event.startedAt},
                     ${event.endedAt ?? event.startedAt}, ${event.endedAt}
                   )
                   RETURNING id
@@ -326,8 +525,13 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
                   incident_id, occurrence_id, association_method, policy_version,
                   association_metadata
                 ) VALUES (
-                  ${incidentId}, ${occurrenceId}, ${associationMethod}, 1,
-                  ${sql.json({ scope: scopeKey, windowSeconds: 600 })}
+                    ${incidentId}, ${occurrenceId}, ${associationMethod},
+                    ${incidentCorrelationPolicyVersion},
+                  ${sql.json({
+                    scope: scopeKey,
+                    incidentScope,
+                    cooldownSeconds: 600
+                  })}
                 )
               `
             }
@@ -390,6 +594,8 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
       listIncidents: (filter) => sql<IncidentSummaryRow>`
         SELECT
           incident.id, incident.status, incident.service, incident.environment,
+          incident.incident_scope AS "incidentScope",
+          incident.merged_into_incident_id AS "mergedIntoIncidentId",
           incident.detected_at AS "detectedAt",
           incident.last_activity_at AS "lastActivityAt",
           incident.signals_cleared_at AS "signalsClearedAt",
@@ -407,7 +613,10 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
           ON relation.incident_id = incident.id
         LEFT JOIN alert_occurrences AS occurrence
           ON occurrence.id = relation.occurrence_id
-        WHERE (${filter.status ?? null}::text IS NULL OR incident.status = ${filter.status ?? null})
+        WHERE (
+            (${filter.status ?? null}::text IS NULL AND incident.status <> 'merged')
+            OR incident.status = ${filter.status ?? null}
+          )
           AND (${filter.service ?? null}::text IS NULL OR incident.service = ${filter.service ?? null})
           AND (${filter.environment ?? null}::text IS NULL OR incident.environment = ${filter.environment ?? null})
         GROUP BY incident.id
@@ -424,6 +633,7 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
         SELECT
           occurrence.id,
           occurrence.correlation_key AS "correlationKey",
+          occurrence.incident_scope AS "incidentScope",
           occurrence.status,
           occurrence.alert_name AS "alertName",
           occurrence.service,

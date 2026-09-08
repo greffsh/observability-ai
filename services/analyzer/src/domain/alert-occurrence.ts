@@ -6,6 +6,7 @@ export type AlertOccurrenceStatus = "open" | "resolved" | "closed_unconfirmed"
 export type AlertOccurrence = {
   readonly id: string
   readonly correlationKey: string
+  readonly incidentScope: string
   readonly status: AlertOccurrenceStatus
   readonly alertName: string
   readonly service: string

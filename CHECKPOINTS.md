@@ -640,6 +640,20 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Evidências:** migration `0005_incident_closure`; endpoint autenticado `PUT /v1/incidents/:incidentId/closure`; testes HTTP e do adapter em memória; validação PostgreSQL real dos resultados `200`, `409` e `401`, persistência da auditoria e chegada de `firing` atrasado sem remover o estado `closed`.
 
+#### CP-06F — Tornar a correlação independente da ordem
+
+**Estado:** `CONCLUÍDO`
+
+- [x] `incident_scope` explícito define quais ocorrências podem compartilhar incidente; sem a label, o nome do alerta é o fallback conservador.
+- [x] Uma ocorrência aberta mantém o incidente como candidato além da janela de 10 minutos, evitando fragmentação durante uma falha ainda ativa.
+- [x] Uma ocorrência fora de ordem que conecta incidentes compatíveis escolhe o mais antigo como canônico e mescla os demais de forma auditável.
+- [x] Uma resolução tardia que invalida uma associação provisória separa os componentes desconectados e audita as ocorrências movidas.
+- [x] Incidentes mesclados deixam de aparecer na listagem operacional padrão, preservam seu ID e apontam para o incidente canônico.
+- [x] Adapters em memória e PostgreSQL obedecem à mesma política v2.
+- [x] A migration exige banco vazio; nenhum backfill da política anterior é executado nesta PoC.
+
+**Evidências:** módulo `incident-correlation`; migration `0006_incident_correlation_policy`; testes de todas as permutações temporais, intervalos abertos nas duas ordens, resolução tardia com split, limite de cooldown, fallback e merge, com paridade entre os adapters; banco do Analyzer recriado; fluxo real do Connect validado com os alertas “Connect controlled failure active” e “HTTP server errors detected” formando duas ocorrências no mesmo incidente, seguido da transição para `awaiting_confirmation`, em 2026-09-08.
+
 ---
 
 ### CP-07 — Coletar um pacote de evidências
@@ -1117,6 +1131,16 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** o resultado prioriza uso durante o incidente e reduz repetição; evidências não selecionadas continuam disponíveis no handoff; relatórios anteriores deixam de satisfazer o contrato v2 e precisam ser regenerados para obter a nova validação.
 - **Checkpoints afetados:** CP-09 e CP-10.
 
+### DEC-019 — Escopo explícito e merge determinístico de incidentes
+
+- **Data:** 2026-09-08
+- **Estado:** aceita; substitui a política de associação ambígua da DEC-013
+- **Contexto:** a política v1 dependia da ordem de chegada: uma ocorrência intermediária podia conectar dois incidentes já criados, mas era rejeitada por ambiguidade. Além disso, a janela era calculada a partir da última atividade conhecida e fragmentava falhas cuja ocorrência continuava aberta.
+- **Decisão:** separar compatibilidade de correlação (`service + environment + incident_scope`) da relação temporal. A label `incident_scope` é explícita; sua ausência usa `alertName` como fallback conservador. Uma ocorrência aberta representa o intervalo `[startedAt, +∞)` nos dois lados da comparação, independentemente da ordem de chegada; sua associação é provisória até o intervalo ser delimitado. Uma ocorrência encerrada usa `[startedAt, endedAt]`, com cooldown de 10 minutos. Se uma nova ocorrência conectar múltiplos candidatos, o incidente com menor `detectedAt` — e ID como desempate — torna-se canônico; relações e eventos são movidos, e os demais IDs permanecem como aliases `merged` auditáveis. Se um `resolved` remover uma conexão, os componentes são recalculados: o mais antigo preserva o ID e os demais formam novos incidentes, com cada movimentação registrada. `closed_unconfirmed` não provoca split porque não fornece um fim temporal verificável.
+- **Alternativas consideradas:** manter a rejeição de candidatos ambíguos; correlacionar todos os alertas do serviço; inferir causa por texto/log; usar apenas uma janela maior; fazer backfill heurístico dos incidentes existentes.
+- **Consequências:** a partição final independe da ordem de chegada e falhas abertas não se fragmentam enquanto permanecem abertas; a composição de um incidente pode mudar diante de eventos atrasados; escopos precisam ser governados nas regras do Grafana; alertas sem escopo não se agrupam entre nomes distintos; merges e splits preservam rastreabilidade sem duplicar o caso operacional; a mudança exige banco vazio nesta fase da PoC.
+- **Checkpoints afetados:** CP-04, CP-06, CP-09 e CP-11.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                                                                                                                                          | Responsável |
@@ -1154,3 +1178,4 @@ Usar uma entrada por decisão tomada:
 | 2026-09-03 | Skill `incident-rca` versionada com fronteira de confiança, contrato estruturado e validação determinística de evidências e referências de código.                                          | Codex       |
 | 2026-09-03 | Interface operacional simplificada para listar incidentes e exportar o handoff; coleta de evidências e severidade deixaram de ser endpoints HTTP independentes.                                | Codex       |
 | 2026-09-03 | Skill `incident-rca` reduzida a diagnóstico de até 500 palavras; validador passou a conferir evidências e estado real do checkout.                                                             | Codex       |
+| 2026-09-08 | Política de correlação v2 concluída com `incident_scope`, fallback conservador, merge determinístico, paridade PostgreSQL/memória e validação orgânica multi-alerta no Connect.                     | Codex       |

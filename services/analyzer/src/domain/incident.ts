@@ -1,4 +1,4 @@
-export const incidentStatuses = ["open", "awaiting_confirmation", "closed"] as const
+export const incidentStatuses = ["open", "awaiting_confirmation", "closed", "merged"] as const
 
 export type IncidentStatus = typeof incidentStatuses[number]
 
@@ -26,6 +26,8 @@ export type Incident = {
   readonly status: IncidentStatus
   readonly service: string
   readonly environment: string
+  readonly incidentScope: string
+  readonly mergedIntoIncidentId: string | null
   readonly detectedAt: Date
   readonly lastActivityAt: Date
   readonly signalsClearedAt: Date | null
