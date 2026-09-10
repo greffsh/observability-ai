@@ -113,3 +113,20 @@ com `incident_scope=scope:http` dentro de um único incidente `open`. Depois da
 recuperação, ambas foram resolvidas e o mesmo incidente transitou para
 `awaiting_confirmation`. Isso exercita a correlação de alertas distintos; o
 gauge controlado é apenas um dos sinais, não a condição da regra HTTP genérica.
+
+## Smoke test automatizado
+
+Com a stack do Analyzer disponível e o checkout do Connect em
+`../sancor-connect`, a matriz real de isolamento por serviço e ambiente pode ser
+executada com:
+
+```bash
+./scripts/test-connect-observability-matrix.sh
+```
+
+O script usa identidades únicas por execução, sobe três processos temporários
+nas portas `3130` a `3132`, produz um erro HTTP em cada um e valida, pelas APIs
+públicas, que Prometheus, Grafana e Analyzer preservam `service`, `environment`
+e `incident_scope`. Por fim, mantém os processos ativos até os três incidentes
+chegarem a `awaiting_confirmation`. Ele não apaga o banco; o `.env` legado do
+Connect continua necessário para inicializar seus módulos.
