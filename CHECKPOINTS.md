@@ -1141,6 +1141,16 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** a partição final independe da ordem de chegada e falhas abertas não se fragmentam enquanto permanecem abertas; a composição de um incidente pode mudar diante de eventos atrasados; escopos precisam ser governados nas regras do Grafana; alertas sem escopo não se agrupam entre nomes distintos; merges e splits preservam rastreabilidade sem duplicar o caso operacional; a mudança exige banco vazio nesta fase da PoC.
 - **Checkpoints afetados:** CP-04, CP-06, CP-09 e CP-11.
 
+### DEC-020 — Consolidar o schema antes da persistência durável
+
+- **Data:** 2026-09-10
+- **Estado:** aceita
+- **Contexto:** o Analyzer ainda não possui banco persistente e as migrations `0001`–`0006` continham várias formas intermediárias do modelo, backfills e colunas posteriormente removidas.
+- **Decisão:** substituir a cadeia por uma única baseline `0001_initial_schema`, equivalente ao schema atual, sem caminhos de backfill. Validar a baseline e o adapter contra um PostgreSQL efêmero vazio.
+- **Alternativas consideradas:** preservar todo o histórico; criar uma `0007` apenas documental; manter o método morto `legacy_backfill` no schema novo.
+- **Consequências:** ambientes locais que aplicaram a cadeia anterior precisam recriar o banco uma vez; o schema inicial fica menor e diretamente auditável; após existir persistência durável, toda evolução volta a ocorrer por migrations incrementais imutáveis.
+- **Checkpoints afetados:** CP-05 e CP-06.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                                                                                                                                          | Responsável |
@@ -1179,3 +1189,4 @@ Usar uma entrada por decisão tomada:
 | 2026-09-03 | Interface operacional simplificada para listar incidentes e exportar o handoff; coleta de evidências e severidade deixaram de ser endpoints HTTP independentes.                                | Codex       |
 | 2026-09-03 | Skill `incident-rca` reduzida a diagnóstico de até 500 palavras; validador passou a conferir evidências e estado real do checkout.                                                             | Codex       |
 | 2026-09-08 | Política de correlação v2 concluída com `incident_scope`, fallback conservador, merge determinístico, paridade PostgreSQL/memória e validação orgânica multi-alerta no Connect.                     | Codex       |
+| 2026-09-10 | Migrations do Analyzer consolidadas em uma baseline limpa, validada com o adapter em PostgreSQL efêmero vazio.                                                                      | Codex       |

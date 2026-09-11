@@ -287,6 +287,20 @@ DATABASE_URL=postgresql://usuario:senha@host:5432/banco pnpm migrate
 As migrations ficam em `services/analyzer/src/migrations`. A tabela
 `effect_sql_migrations` registra quais versões já foram aplicadas.
 
+Enquanto a PoC ainda não possui banco persistente, o schema foi consolidado em
+uma única baseline (`0001_initial_schema`). Um ambiente que tenha aplicado a
+cadeia anterior `0001`–`0006` deve recriar o banco antes de usar esta versão. A
+baseline e o adapter PostgreSQL podem ser validados juntos em um banco efêmero:
+
+```bash
+cd services/analyzer
+pnpm test:postgres
+```
+
+Depois que um banco persistente passar a existir, mudanças de schema devem ser
+feitas somente por novas migrations incrementais; a baseline não deve ser
+reescrita.
+
 ## Logs do Analyzer
 
 Os casos de uso emitem logs com `Effect.log*`. Um adapter preserva níveis,

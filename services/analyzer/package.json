@@ -14,6 +14,7 @@
     "migrate:prod": "node dist/migrate.js",
     "start": "node dist/main.js",
     "test": "vitest run",
+    "test:postgres": "./scripts/test-postgres.sh",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

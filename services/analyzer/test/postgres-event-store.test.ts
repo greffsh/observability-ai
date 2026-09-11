@@ -30,10 +30,11 @@ const event = (overrides: Partial<AlertEvent> = {}): AlertEvent => ({
 integration("PostgreSQL incident correlation", () => {
   let runtime: ManagedRuntime.ManagedRuntime<PgClient.PgClient, never>
   let store: EventStore
+  let appliedMigrations: ReadonlyArray<readonly [id: number, name: string]>
 
   beforeAll(async () => {
     const redactedUrl = Redacted.make(databaseUrl!)
-    await Effect.runPromise(migrateDatabase(redactedUrl))
+    appliedMigrations = await Effect.runPromise(migrateDatabase(redactedUrl))
     runtime = ManagedRuntime.make(PgClient.layer({ url: redactedUrl }))
     store = await runtime.runPromise(makePostgresEventStore)
   })
@@ -47,6 +48,10 @@ integration("PostgreSQL incident correlation", () => {
 
   afterAll(async () => {
     await runtime?.dispose()
+  })
+
+  it("bootstraps an empty database from one consolidated baseline", () => {
+    expect(appliedMigrations).toEqual([[1, "initial_schema"]])
   })
 
   it("keeps compatible late alerts in an incident with an open occurrence", async () => {
