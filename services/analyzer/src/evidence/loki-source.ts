@@ -24,11 +24,54 @@ type LokiSourceOptions = {
 type LogEntry = {
   readonly timestamp: string
   readonly line: string
+  readonly fields: Readonly<Record<string, unknown>> | null
   readonly labels: {
     readonly service: string
     readonly environment: string
     readonly level: string | null
   }
+}
+
+const allowedStructuredFields = new Set([
+  "event",
+  "level",
+  "severity",
+  "context",
+  "requestId",
+  "http.request.method",
+  "http.route",
+  "http.response.status_code",
+  "error.type",
+  "error.message",
+  "exception.stacktrace"
+])
+
+const recordFrom = (value: unknown): Readonly<Record<string, unknown>> | null =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Readonly<Record<string, unknown>>
+    : null
+
+const parseRecord = (value: string): Readonly<Record<string, unknown>> | null => {
+  try {
+    return recordFrom(JSON.parse(value) as unknown)
+  } catch {
+    return null
+  }
+}
+
+const structuredFields = (line: string): Readonly<Record<string, unknown>> | null => {
+  const envelope = parseRecord(line)
+  if (envelope === null) return null
+
+  const body = typeof envelope.body === "string" ? parseRecord(envelope.body) : null
+  const attributes = recordFrom(envelope.attributes)
+  const fields = Object.fromEntries(
+    [envelope, attributes, body]
+      .filter((record): record is Readonly<Record<string, unknown>> => record !== null)
+      .flatMap((record) => Object.entries(record))
+      .filter(([name]) => allowedStructuredFields.has(name))
+  )
+  return Object.keys(fields).length === 0 ? null : fields
 }
 
 const errorLevels = new Set(["alert", "crit", "critical", "emerg", "error", "fatal", "panic"])
@@ -119,6 +162,7 @@ export const makeLokiEvidenceSource = (
       .flatMap((stream) => (stream.values ?? []).map(([timestamp, line]) => ({
         timestamp,
         line,
+        fields: structuredFields(line),
         labels: {
           service: stream.stream?.service ?? context.incident.service,
           environment: stream.stream?.environment ?? context.incident.environment,
