@@ -42,6 +42,12 @@ primeiro erro. Se uma fonte externa entregar um counter já positivo sem essa
 amostra-base, o Analyzer não o converte silenciosamente em zero: retorna o sinal
 como desconhecido e registra `metrics:counter_baseline_missing`.
 
+O interceptor HTTP global emite um log estruturado para cada resposta `5xx`,
+com método, template normalizado da rota, status, tipo, mensagem e stack trace
+limitado pelo sanitizador do handoff. Corpo, query string e parâmetros concretos
+da URL não são incluídos. O alerta continua agregado por serviço e ambiente; a
+rota é evidência diagnóstica coletada do Loki, não identidade do incidente.
+
 O catálogo usa exatamente esses nomes. Para esta PoC local, a criticidade foi
 registrada conservadoramente como `medium` e o teto como `alta`; essa premissa
 operacional precisa ser validada antes de cadastrar outro ambiente.
@@ -52,6 +58,11 @@ de `service + environment` produz sua própria instância e envia
 `incident_scope=http`. Assim, respostas HTTP 5xx reais acionam o Analyzer sem
 depender do gauge de falha controlada. A regra sintética usa o mesmo escopo para
 que indisponibilidade e erros HTTP compatíveis pertençam ao mesmo incidente.
+A consulta retorna o aumento numérico e uma condição separada compara o valor
+com zero; portanto, zero erros representa recuperação, não `NoData`. Quando a
+telemetria realmente desaparece, a regra mantém o último estado conhecido. Uma
+regra distinta de ausência de telemetria ainda será necessária para detectar
+interrupções prolongadas do sinal.
 
 ## Execução local
 
