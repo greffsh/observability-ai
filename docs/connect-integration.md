@@ -1,143 +1,69 @@
 # Integração local do Connect
 
-## Diagnóstico anterior à integração
+O Connect envia métricas e logs de erro ao Alloy do Analyzer por OTLP/gRPC. A
+identidade usada pela PoC é `service.name=connect` e
+`deployment.environment.name=local`.
 
-O Connect é uma aplicação Node.js 20 com NestJS 10, executada em desenvolvimento
-com `yarn dev` e em modo compilado com `yarn build && yarn start:prod`. Seu Compose
-local contém apenas Redis, LocalStack e um inicializador AWS; ele não contém nem
-passou a conter Grafana, Prometheus, Loki ou Collector.
+## Sinais utilizados
 
-Antes desta integração, o Connect escrevia logs JSON em `stdout` por Winston e
-inicializava o NodeSDK do OpenTelemetry somente fora de `development`. O SDK
-exportava apenas traces por OTLP/gRPC. O endpoint era controlado pela variável
-padrão `OTEL_EXPORTER_OTLP_ENDPOINT` e, sem configuração, usava o padrão do
-exporter gRPC. O recurso usava `service.name=connect-api`, `group=sancor` e o
-atributo incorreto `deploymnent.environment`; não havia exporter de logs ou
-métricas, counters, disponibilidade, estado de falha ou timestamp de mudança.
+O contrato mínimo possui somente um counter cumulativo:
 
-Nenhuma configuração externa de Grafana, Prometheus, Loki ou Collector foi
-encontrada no repositório do Connect. Na integração local, o processo no host
-alcança o Alloy do Analyzer por `127.0.0.1:4317`. Essa porta não tem autenticação
-nem TLS e só deve ser usada assim em localhost ou rede privada de desenvolvimento.
+| Significado | Métrica no Prometheus |
+|---|---|
+| Requisições | `http_server_requests_total` |
+| Erros HTTP 5xx | `http_server_requests_total{outcome="failure"}` |
 
-## Sinais adicionados
+As séries `outcome=success` e `outcome=failure` são inicializadas em zero. O
+Grafana avalia o aumento das falhas no último minuto e cria uma instância de
+alerta para cada combinação de `service + environment`, com
+`incident_scope=http`.
 
-A identidade OTLP canônica é `service.name=connect` e
-`deployment.environment.name=local`. Os logs continuam em `stdout` e também são
-enviados por OTLP/gRPC. Os sinais métricos são:
+Para cada resposta `5xx`, o interceptor global também envia um log de erro com
+método, template normalizado da rota, status, tipo, mensagem e stack trace.
+Corpo, query string e valores concretos dos parâmetros não são incluídos. Erros
+registrados pela integração HTTP compartilham o `requestId`, permitindo associar
+a falha da dependência à rota de entrada no handoff.
 
-| Significado | Métrica no Prometheus | Tipo/temporariedade |
-|---|---|---|
-| Requisições | `http_server_requests_total` | counter cumulativo |
-| Erros HTTP 5xx | `http_server_requests_total{outcome="failure"}` | série do counter cumulativo de requisições |
-| Falha controlada ativa | `connect_failure_state` | gauge, `0` ou `1` |
-| Disponibilidade | `connect_availability` | gauge, `0` ou `1` |
-| Última mudança | `connect_last_change_timestamp_seconds` | gauge com timestamp Unix em segundos |
-
-As séries cumulativas de requisições usam apenas o resultado estável
-`success`/`failure`. A mesma métrica fornece o total e, com o filtro
-`outcome="failure"`, as falhas, sem um counter dedicado redundante. As duas séries
-são inicializadas em zero para que o Analyzer possua uma amostra-base antes do
-primeiro erro. Se uma fonte externa entregar um counter já positivo sem essa
-amostra-base, o Analyzer não o converte silenciosamente em zero: retorna o sinal
-como desconhecido e registra `metrics:counter_baseline_missing`.
-
-O interceptor HTTP global emite um log estruturado para cada resposta `5xx`,
-com método, template normalizado da rota, status, tipo, mensagem e stack trace
-limitado pelo sanitizador do handoff. Corpo, query string e parâmetros concretos
-da URL não são incluídos. O alerta continua agregado por serviço e ambiente; a
-rota é evidência diagnóstica coletada do Loki, não identidade do incidente.
-
-O catálogo usa exatamente esses nomes. Para esta PoC local, a criticidade foi
-registrada conservadoramente como `medium` e o teto como `alta`; essa premissa
-operacional precisa ser validada antes de cadastrar outro ambiente.
-
-O Grafana também provisiona uma regra multidimensional sobre o aumento de
-`http_server_requests_total{outcome="failure"}` no último minuto. Cada combinação
-de `service + environment` produz sua própria instância e envia
-`incident_scope=http`. Assim, respostas HTTP 5xx reais acionam o Analyzer sem
-depender do gauge de falha controlada. A regra sintética usa o mesmo escopo para
-que indisponibilidade e erros HTTP compatíveis pertençam ao mesmo incidente.
-A consulta retorna o aumento numérico e uma condição separada compara o valor
-com zero; portanto, zero erros representa recuperação, não `NoData`. Quando a
-telemetria realmente desaparece, a regra mantém o último estado conhecido. Uma
-regra distinta de ausência de telemetria ainda será necessária para detectar
-interrupções prolongadas do sinal.
+O catálogo do Connect usa apenas `totalRequests` e `failedRequests`. Sinais de
+disponibilidade continuam suportados genericamente pelo Analyzer, mas não fazem
+parte deste contrato porque exigem monitoramento externo ao processo.
 
 ## Execução local
 
-Com a stack do Analyzer já iniciada, compile e execute o Connect no host. As
-credenciais AWS abaixo são apenas as credenciais fixas do LocalStack versionadas
-no Compose do próprio Connect.
+Com a stack do Analyzer iniciada, execute o Connect fora de `development` e
+aponte o endpoint OTLP para o Alloy:
 
 ```bash
 cd /home/greff/eureka/sancor-connect
-docker compose up --detach
 yarn build
 APP_ENVIRONMENT=local \
-PORT=3030 \
-CONNECT_MICROS_BASE_URL=http://127.0.0.1 \
-PAY2B_IBM_AUTH_BASIC=test \
-AWS_ACCESS_KEY_ID=test \
-AWS_SECRET_ACCESS_KEY=test \
-AWS_DEFAULT_REGION=us-east-1 \
 OTEL_CONFIG='{"name":"connect","group":"sancor","environment":"local"}' \
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4317 \
-OTEL_METRIC_EXPORT_INTERVAL=5000 \
-OTEL_NODE_RESOURCE_DETECTORS=none \
 OTEL_TRACES_EXPORTER=none \
-OBSERVABILITY_TEST_CONTROL_ENABLED=true \
 yarn start:prod
 ```
 
-`OBSERVABILITY_TEST_CONTROL_ENABLED` é `false` por padrão. Quando habilitada
-explicitamente, a falha controlada torna `GET /ping` indisponível sem alterar as
-integrações de negócio:
+As demais variáveis continuam vindo do `.env` do Connect.
+
+## Teste com falha orgânica
+
+Inicie o Connect sobrescrevendo somente uma dependência HTTP para uma porta
+offline:
 
 ```bash
-curl --request POST http://127.0.0.1:3030/internal/observability/failure
-curl --include http://127.0.0.1:3030/ping
-curl --request DELETE http://127.0.0.1:3030/internal/observability/failure
-curl --fail http://127.0.0.1:3030/ping
+APP_ENVIRONMENT=local \
+CONSULTAS_API_URL=http://127.0.0.1:65534 \
+OTEL_CONFIG='{"name":"connect","group":"sancor","environment":"local"}' \
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4317 \
+OTEL_TRACES_EXPORTER=none \
+yarn start:prod
 ```
 
-O Grafana avalia `connect_failure_state` a cada 10 segundos. A regra inclui as
-labels `service=connect` e `environment=local`, usa o contact point genérico do
-Analyzer e envia tanto `firing` quanto `resolved`. Como essa regra representa o
-controle explícito e não a ausência do processo, `NoData` permanece normal. Uma
-falha abrupta do processo exigiria outro sinal externo de disponibilidade; ela
-não é coberta por esta integração.
+Com um Bearer válido, faça `GET /propostas?cd_usuario=observability-test`. O
+resultado esperado é `502`: o log da Consultas API registra `ECONNREFUSED`, o
+interceptor registra a rota `/propostas` e o counter produz o alerta HTTP. Após
+a janela de avaliação, o Analyzer cria um incidente `scope:http`; o handoff deve
+conter os dois logs correlacionados pelo `requestId`.
 
-O Connect possui auto-instrumentação de traces nos demais ambientes. O Alloy
-desta PoC não provisiona um pipeline para eles; por isso a execução local usa
-`OTEL_TRACES_EXPORTER=none`. Armazenamento e consulta de traces permanecem fora
-do escopo. A execução também desabilita os detectores automáticos de recurso
-para que nome do host, usuário e caminho do processo não sejam enviados à PoC;
-somente a identidade explícita do serviço é necessária para este teste.
-
-## Validação multi-alerta
-
-Em 2026-09-08, duas respostas `503` orgânicas de `GET /ping` foram produzidas
-durante a falha controlada. O Grafana disparou tanto “Connect controlled failure
-active” quanto “HTTP server errors detected”. O Analyzer criou duas ocorrências
-com `incident_scope=scope:http` dentro de um único incidente `open`. Depois da
-recuperação, ambas foram resolvidas e o mesmo incidente transitou para
-`awaiting_confirmation`. Isso exercita a correlação de alertas distintos; o
-gauge controlado é apenas um dos sinais, não a condição da regra HTTP genérica.
-
-## Smoke test automatizado
-
-Com a stack do Analyzer disponível e o checkout do Connect em
-`../sancor-connect`, a matriz real de isolamento por serviço e ambiente pode ser
-executada com:
-
-```bash
-./scripts/test-connect-observability-matrix.sh
-```
-
-O script usa identidades únicas por execução, sobe três processos temporários
-nas portas `3130` a `3132`, produz um erro HTTP em cada um e valida, pelas APIs
-públicas, que Prometheus, Grafana e Analyzer preservam `service`, `environment`
-e `incident_scope`. Por fim, mantém os processos ativos até os três incidentes
-chegarem a `awaiting_confirmation`. Ele não apaga o banco; o `.env` legado do
-Connect continua necessário para inicializar seus módulos.
+Falhas de startup por configuração ausente não passam pelo interceptor HTTP e
+exigem uma regra externa de indisponibilidade, ainda fora deste contrato.

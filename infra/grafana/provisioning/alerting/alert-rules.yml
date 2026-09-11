@@ -1,72 +1,15 @@
 apiVersion: 1
 
+deleteRules:
+  - orgId: 1
+    uid: connect-controlled-failure
+
 groups:
   - orgId: 1
-    name: Connect local alerts
+    name: HTTP service alerts
     folder: Grafana AI PoC
     interval: 10s
     rules:
-      - uid: connect-controlled-failure
-        title: Connect controlled failure active
-        condition: B
-        data:
-          - refId: A
-            relativeTimeRange:
-              from: 60
-              to: 0
-            datasourceUid: prometheus
-            model:
-              datasource:
-                type: prometheus
-                uid: prometheus
-              editorMode: code
-              expr: connect_failure_state{service="connect", environment="local"}
-              instant: true
-              intervalMs: 1000
-              legendFormat: __auto
-              maxDataPoints: 43200
-              range: false
-              refId: A
-          - refId: B
-            relativeTimeRange:
-              from: 0
-              to: 0
-            datasourceUid: __expr__
-            model:
-              conditions:
-                - evaluator:
-                    params:
-                      - 0
-                    type: gt
-                  operator:
-                    type: and
-                  query:
-                    params:
-                      - A
-                  reducer:
-                    params: []
-                    type: last
-                  type: query
-              datasource:
-                type: __expr__
-                uid: __expr__
-              expression: A
-              refId: B
-              type: classic_conditions
-        noDataState: OK
-        execErrState: Error
-        for: 0s
-        annotations:
-          summary: Connect controlled failure is active
-          description: The local, explicitly enabled Connect failure mode is active.
-        labels:
-          service: connect
-          environment: local
-          incident_scope: http
-          signal: controlled_failure
-          severity: warning
-        isPaused: false
-
       - uid: http-server-errors
         title: HTTP server errors detected
         condition: C

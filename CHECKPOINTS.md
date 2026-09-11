@@ -652,7 +652,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 - [x] Adapters em memória e PostgreSQL obedecem à mesma política v2.
 - [x] A migration exige banco vazio; nenhum backfill da política anterior é executado nesta PoC.
 
-**Evidências:** módulo `incident-correlation`; migration `0006_incident_correlation_policy`; testes de todas as permutações temporais, intervalos abertos nas duas ordens, resolução tardia com split, limite de cooldown, fallback e merge, com paridade entre os adapters; banco do Analyzer recriado; fluxo real do Connect validado com os alertas “Connect controlled failure active” e “HTTP server errors detected” formando duas ocorrências no mesmo incidente, seguido da transição para `awaiting_confirmation`, em 2026-09-08.
+**Evidências:** módulo `incident-correlation`; migration consolidada; testes de todas as permutações temporais, intervalos abertos nas duas ordens, resolução tardia com split, limite de cooldown, fallback e merge, com paridade entre os adapters; banco do Analyzer recriado; correlação multi-alerta validada historicamente em 2026-09-08. A regra sintética usada naquele ensaio foi removida após a validação em favor do fluxo orgânico de erros HTTP.
 
 ---
 

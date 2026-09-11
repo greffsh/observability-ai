@@ -23,10 +23,7 @@
           "severityCeiling": "alta",
           "impactQueries": {
             "totalRequests": "http_server_requests_total{service=\"{{service}}\",environment=\"{{environment}}\"}",
-            "failedRequests": "http_server_requests_total{service=\"{{service}}\",environment=\"{{environment}}\",outcome=\"failure\"}",
-            "failureState": "connect_failure_state{service=\"{{service}}\",environment=\"{{environment}}\"}",
-            "availability": "connect_availability{service=\"{{service}}\",environment=\"{{environment}}\"}",
-            "lastChange": "connect_last_change_timestamp_seconds{service=\"{{service}}\",environment=\"{{environment}}\"}"
+            "failedRequests": "http_server_requests_total{service=\"{{service}}\",environment=\"{{environment}}\",outcome=\"failure\"}"
           }
         }
       }
