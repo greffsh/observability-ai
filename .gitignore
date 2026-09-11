@@ -3,4 +3,8 @@
 node_modules/
 dist/
 coverage/
-
+**/__pycache__/
+*.py[cod]
+/handoff-*.json
+/rca-handoff-*.json
+/rca-[0-9a-f]*.md
