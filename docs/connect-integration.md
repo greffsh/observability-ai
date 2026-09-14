@@ -40,6 +40,8 @@ APP_ENVIRONMENT=local \
 OTEL_CONFIG='{"name":"connect","group":"sancor","environment":"local"}' \
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4317 \
 OTEL_TRACES_EXPORTER=none \
+OTEL_METRIC_EXPORT_INTERVAL=10000 \
+OTEL_METRIC_EXPORT_TIMEOUT=5000 \
 yarn start:prod
 ```
 
@@ -56,6 +58,8 @@ CONSULTAS_API_URL=http://127.0.0.1:65534 \
 OTEL_CONFIG='{"name":"connect","group":"sancor","environment":"local"}' \
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4317 \
 OTEL_TRACES_EXPORTER=none \
+OTEL_METRIC_EXPORT_INTERVAL=10000 \
+OTEL_METRIC_EXPORT_TIMEOUT=5000 \
 yarn start:prod
 ```
 

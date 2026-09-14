@@ -716,6 +716,8 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Evidências:** módulo `services/analyzer/src/severity`; endpoint autenticado `POST /v1/incidents/:incidentId/severity`; modos e métricas controláveis em `services/checkout-api`; testes automatizados dos cenários CV-01 (`baixa`), CV-02 (`alta`) e CV-03 (`critica`); 51 testes, typecheck e build aprovados. Após a generalização, CV-03 foi revalidado no incidente `5db1fa0e-b999-42df-acad-d9cee49731a6`, com regra `SERVICE_UNAVAILABLE`, evidência normalizada `metrics-4` e mudança recente explicitamente tratada como não causal. Logs e métrica OTLP de `connect-external/test` também foram recebidos e consultados no Loki e Prometheus. Counters positivos sem amostra-base passaram a produzir sinal desconhecido e limitação explícita, enquanto counters inicializados em zero, resets e múltiplas séries são medidos deterministicamente.
 
+**Correção pós-entrega em 2026-09-14:** o reader de métricas criado manualmente pelo Connect usava o default interno de 60 segundos e não aplicava `OTEL_METRIC_EXPORT_INTERVAL`. Como as amostras podiam ficar ligeiramente mais de 60 segundos separadas, a regra `increase(...[1m])` retornava `NoData` mesmo após respostas `5xx`. O Connect passou a configurar explicitamente intervalo de 10 segundos e timeout de 5 segundos, com suporte às variáveis OTEL e teste de regressão. Uma falha orgânica em `/propostas` voltou a produzir `firing`, incidente e `resolved` no fluxo real.
+
 ---
 
 ### CP-09 — Gerar RCA assistido por IA
@@ -1190,3 +1192,4 @@ Usar uma entrada por decisão tomada:
 | 2026-09-03 | Skill `incident-rca` reduzida a diagnóstico de até 500 palavras; validador passou a conferir evidências e estado real do checkout.                                                             | Codex       |
 | 2026-09-08 | Política de correlação v2 concluída com `incident_scope`, fallback conservador, merge determinístico, paridade PostgreSQL/memória e validação orgânica multi-alerta no Connect.                     | Codex       |
 | 2026-09-10 | Migrations do Analyzer consolidadas em uma baseline limpa, validada com o adapter em PostgreSQL efêmero vazio.                                                                      | Codex       |
+| 2026-09-14 | Intervalo OTLP do Connect explicitado abaixo da janela do alerta; regressão `NoData` corrigida e fluxo orgânico `firing → incidente → resolved` revalidado.                         | Codex       |

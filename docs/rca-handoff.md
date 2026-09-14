@@ -92,25 +92,37 @@ retornada. Se entradas forem omitidas ou o limite de leitura for atingido, o
 pacote inclui uma limitação `logs:truncated`; a referência consultável preserva
 a consulta completa para investigação humana.
 
-## Checkout local
+## Entrada da skill e checkout local
 
-O operador entrega o arquivo ao agente e informa o checkout em uma entrada
-separada:
+A skill aceita o contexto do incidente de três formas: caminho para um handoff
+salvo, objeto JSON completo enviado na conversa ou `incident_id`. O checkout
+local continua sendo uma entrada separada e explícita em todos os casos.
 
-```text
-incident_context=./rca-handoff-UUID.json
-repository_path=/caminho/para/o/checkout
-```
-
-A revisão e a fidelidade desse checkout são responsabilidade explícita do
-operador. A skill versionada `.agents/skills/incident-rca` consome essas duas
-entradas. Em uma sessão iniciada neste repositório, invoque-a com um pedido
-equivalente a:
+Com um arquivo existente:
 
 ```text
 $incident-rca analise ./rca-handoff-UUID.json usando o checkout
 /caminho/para/o/checkout e salve o resultado em ./rca-UUID.md
 ```
 
-Ela mantém o checkout somente para leitura e valida o relatório Markdown contra
-o handoff e as referências reais de arquivo e linha.
+Com o JSON, o operador pode colar o objeto completo junto ao pedido. A skill o
+valida e salva antes da análise, preservando o snapshot utilizado.
+
+Com um ID, a própria skill chama o endpoint autenticado de handoff:
+
+```text
+$incident-rca analise o incidente UUID usando o checkout
+/caminho/para/o/checkout
+```
+
+Internamente, o helper `scripts/fetch_handoff.py` chama
+`POST /v1/incidents/:incidentId/rca-handoff`. Ele usa `ANALYZER_URL` quando
+configurada ou o Analyzer local na porta `ANALYZER_PORT`, e obtém
+`ANALYZER_OPERATOR_TOKEN` do ambiente ou do `.env` sem imprimi-lo. A resposta é
+salva como artefato local antes da geração do diagnóstico. Um erro de rede,
+autenticação ou incidente inexistente interrompe a análise; a skill não escolhe
+outro incidente.
+
+A revisão e a fidelidade do checkout são responsabilidade explícita do
+operador. A skill mantém o checkout somente para leitura e valida o relatório
+Markdown contra o handoff salvo e as referências reais de arquivo e linha.

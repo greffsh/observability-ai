@@ -234,11 +234,14 @@ handoff ou encerramento. Uma ocorrência posterior a um incidente encerrado
 inicia outro incidente.
 
 O Analyzer não acessa repositórios e não chama um modelo de IA. O operador
-entrega o arquivo a um agente e aponta, como entrada separada, o checkout local
-que poderá ser analisado. O contrato, a seleção limitada de logs e as garantias
-desse limite estão em [docs/rca-handoff.md](docs/rca-handoff.md). A skill que
-consome o handoff está versionada em `.agents/skills/incident-rca` e pode ser
-invocada como `$incident-rca` em uma sessão iniciada neste repositório.
+fornece à skill um arquivo de handoff, o JSON completo ou um `incident_id` e
+aponta, como entrada separada, o checkout local que poderá ser analisado. Quando
+recebe um ID, a skill busca o handoff no endpoint autenticado do Analyzer e
+salva o snapshot antes da análise. O contrato, a seleção limitada de logs e as
+garantias desse limite estão em
+[docs/rca-handoff.md](docs/rca-handoff.md). A skill está versionada em
+`.agents/skills/incident-rca` e pode ser invocada como `$incident-rca` em uma
+sessão iniciada neste repositório.
 
 Serviços adicionais são cadastrados em
 `infra/analyzer/service-catalog.json`. O perfil liga métricas próprias a sinais
