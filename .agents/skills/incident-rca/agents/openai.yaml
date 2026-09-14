@@ -1,4 +1,4 @@
 interface:
   display_name: "Incident RCA"
   short_description: "Generate a concise evidence-linked diagnosis"
-  default_prompt: "Use $incident-rca to analyze this handoff against the provided checkout and write a concise, evidence-linked incident diagnosis."
+  default_prompt: "Use $incident-rca to resolve the provided handoff file, pasted handoff JSON, or incident ID; analyze it against the explicit checkout; and write a concise, evidence-linked incident diagnosis."
