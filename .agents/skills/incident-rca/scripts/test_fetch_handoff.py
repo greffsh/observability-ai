@@ -34,7 +34,7 @@ class AnalyzerHandler(BaseHTTPRequestHandler):
                 "handoffId": "handoff-1",
                 "incident": {
                     "id": type(self).response_incident_id,
-                    "service": "connect",
+                    "service": "connect-api",
                     "environment": "local",
                 },
                 "severity": {"recommendedSeverity": "alta"},

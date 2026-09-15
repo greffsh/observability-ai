@@ -1,7 +1,7 @@
 # Integração local do Connect
 
 O Connect envia métricas e logs de erro ao Alloy do Analyzer por OTLP/gRPC. A
-identidade usada pela PoC é `service.name=connect` e
+identidade usada pela PoC é `service.name=connect-api` e
 `deployment.environment.name=local`.
 
 ## Sinais utilizados
@@ -37,7 +37,7 @@ aponte o endpoint OTLP para o Alloy:
 cd /home/greff/eureka/sancor-connect
 yarn build
 APP_ENVIRONMENT=local \
-OTEL_CONFIG='{"name":"connect","group":"sancor","environment":"local"}' \
+OTEL_CONFIG='{"name":"connect-api","group":"sancor","environment":"local"}' \
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4317 \
 OTEL_TRACES_EXPORTER=none \
 OTEL_METRIC_EXPORT_INTERVAL=10000 \
@@ -55,7 +55,7 @@ offline:
 ```bash
 APP_ENVIRONMENT=local \
 CONSULTAS_API_URL=http://127.0.0.1:65534 \
-OTEL_CONFIG='{"name":"connect","group":"sancor","environment":"local"}' \
+OTEL_CONFIG='{"name":"connect-api","group":"sancor","environment":"local"}' \
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4317 \
 OTEL_TRACES_EXPORTER=none \
 OTEL_METRIC_EXPORT_INTERVAL=10000 \

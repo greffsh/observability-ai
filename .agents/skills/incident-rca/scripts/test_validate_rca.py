@@ -49,7 +49,7 @@ class ValidateRcaTest(unittest.TestCase):
                     "schemaVersion": 1,
                     "incident": {
                         "id": "incident-1",
-                        "service": "connect",
+                        "service": "connect-api",
                         "environment": "local",
                     },
                     "severity": {
@@ -78,7 +78,7 @@ class ValidateRcaTest(unittest.TestCase):
         self.temporary_directory.cleanup()
 
     def document(self) -> str:
-        return f"""# Diagnóstico — connect / local
+        return f"""# Diagnóstico — connect-api / local
 
 **Incident ID:** `incident-1`
 **Severidade recomendada:** `alta`

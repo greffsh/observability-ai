@@ -22,7 +22,7 @@ const makeWebhook = (input: AlertInput) => {
   const status = input.status ?? "firing"
   const labels: Record<string, string> = {
     alertname: input.alertName,
-    service: input.service ?? "connect",
+    service: input.service ?? "connect-api",
     environment: input.environment ?? "local"
   }
   if (input.incidentScope !== undefined) labels.incident_scope = input.incidentScope
@@ -140,7 +140,7 @@ describe("incident correlation through the Analyzer HTTP API", () => {
       const incidents = await listIncidents(app)
       expect(incidents).toHaveLength(1)
       expect(incidents[0]).toMatchObject({
-        service: "connect",
+        service: "connect-api",
         environment: "local",
         incidentScope: "scope:http",
         status: "open",
@@ -164,7 +164,7 @@ describe("incident correlation through the Analyzer HTTP API", () => {
     },
     {
       dimension: "service",
-      first: { incidentScope: "http", service: "connect" },
+      first: { incidentScope: "http", service: "connect-api" },
       second: { incidentScope: "http", service: "payments" }
     },
     {

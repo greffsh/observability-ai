@@ -11,7 +11,7 @@ describe("service catalog", () => {
     const catalog = await Effect.runPromise(decodeServiceCatalog({
       schemaVersion: 1,
       services: {
-        connect: {
+        "connect-api": {
           criticality: "medium",
           environments: {
             production: {
@@ -25,7 +25,7 @@ describe("service catalog", () => {
       }
     }))
 
-    expect(findEnvironmentProfile(catalog, "connect", "production")).toMatchObject({
+    expect(findEnvironmentProfile(catalog, "connect-api", "production")).toMatchObject({
       service: { criticality: "medium" },
       environment: { severityCeiling: "alta" }
     })
@@ -42,7 +42,7 @@ describe("service catalog", () => {
   it("rejects an invalid catalog before the Analyzer starts", async () => {
     const result = await Effect.runPromiseExit(decodeServiceCatalog({
       schemaVersion: 1,
-      services: { connect: { criticality: "urgent", environments: {} } }
+      services: { "connect-api": { criticality: "urgent", environments: {} } }
     }))
 
     expect(result._tag).toBe("Failure")

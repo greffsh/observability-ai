@@ -171,7 +171,7 @@ describe("Analyzer HTTP API", () => {
   it("returns an empty incident list when operational filters do not match", async () => {
     const response = await app.inject({
       method: "GET",
-      url: "/v1/incidents?status=open&service=connect",
+      url: "/v1/incidents?status=open&service=connect-api",
       headers: { authorization: "Bearer test-operator-token" }
     })
 

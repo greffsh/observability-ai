@@ -97,7 +97,7 @@ describe("evidence source adapters", () => {
       catalog: {
         schemaVersion: 1,
         services: {
-          connect: {
+          "connect-api": {
             criticality: "medium",
             environments: {
               production: {
@@ -114,13 +114,13 @@ describe("evidence source adapters", () => {
 
     const result = await Effect.runPromise(source.collect({
       ...context,
-      incident: { ...incident, service: "connect", environment: "production" }
+      incident: { ...incident, service: "connect-api", environment: "production" }
     }))
     const requestUrl = fetchMock.mock.calls[0]?.[0] as URL
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(requestUrl.searchParams.get("query")).toBe(
-      "connect_up{service=\"connect\",environment=\"production\"}"
+      "connect_up{service=\"connect-api\",environment=\"production\"}"
     )
     expect(result.evidence[0]).toMatchObject({
       data: { signal: "availability" }

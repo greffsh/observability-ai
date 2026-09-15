@@ -14,7 +14,7 @@ Liste os incidentes que podem ser analisados sem consultar diretamente o banco:
 
 ```bash
 curl --header "Authorization: Bearer change-me-operator" \
-  "http://localhost:8080/v1/incidents?status=open&service=connect&environment=local"
+  "http://localhost:8080/v1/incidents?status=open&service=connect-api&environment=local"
 ```
 
 O handoff pode ser exportado durante a falha para uma análise preliminar. Uma
@@ -44,7 +44,7 @@ o Analyzer ainda não o persiste como artefato separado.
   "incident": {
     "id": "uuid",
     "status": "open",
-    "service": "connect",
+    "service": "connect-api",
     "environment": "local",
     "detectedAt": "2026-09-03T11:55:00.000Z",
     "lastActivityAt": "2026-09-03T11:55:00.000Z",

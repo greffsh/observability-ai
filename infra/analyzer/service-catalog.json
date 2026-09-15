@@ -16,7 +16,7 @@
         }
       }
     },
-    "connect": {
+    "connect-api": {
       "criticality": "medium",
       "environments": {
         "local": {

@@ -15,7 +15,7 @@ const event = (overrides: Partial<AlertEvent> = {}): AlertEvent => ({
   eventId: "availability:firing:2026-08-28T10:00:00.000Z",
   alertFingerprint: "availability",
   alertName: "Availability",
-  service: "connect",
+  service: "connect-api",
   environment: "local",
   state: "firing",
   startedAt: new Date("2026-08-28T10:00:00Z"),

@@ -13,7 +13,7 @@ catálogo exigem reiniciar o Analyzer.
 
 ```json
 {
-  "connect": {
+  "connect-api": {
     "criticality": "high",
     "environments": {
       "production": {
@@ -39,7 +39,7 @@ A stack local recebe OTLP por gRPC em `4317` e por HTTP em `4318`. Um serviço
 instrumentado deve enviar os resource attributes:
 
 ```text
-service.name=connect
+service.name=connect-api
 deployment.environment.name=production
 ```
 
@@ -51,7 +51,7 @@ envio ou configuradas como cumulativas no SDK/Collector de origem.
 Exemplo de configuração, sujeito ao suporte do SDK da linguagem:
 
 ```text
-OTEL_SERVICE_NAME=connect
+OTEL_SERVICE_NAME=connect-api
 OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production
 OTEL_EXPORTER_OTLP_ENDPOINT=http://HOST-DO-ALLOY:4318
 ```
@@ -67,7 +67,7 @@ que representa um sinal do Connect precisa enviar pelo menos:
 
 ```yaml
 labels:
-  service: connect
+  service: connect-api
   environment: production
   incident_scope: http
 ```
