@@ -87,5 +87,25 @@ python3 scripts/validate_rca.py RCA.md \
 ```
 
 Resolve the script path relative to this `SKILL.md`. Fix every validation error
-before returning. Report the output path, confidence, cause status and most
-important limitation in the final response.
+before returning.
+
+In the final response, report the output path, deterministic severity,
+confidence, cause status and most important limitation. Before those fields,
+include a two-to-four-sentence operator summary that states the observed impact,
+the probable cause and why the selected evidence and checkout support it. Reuse
+only conclusions from the validated diagnosis; do not introduce new claims. If
+the cause status is `insufficient_context`, say explicitly that no responsible
+probable cause can be stated and name the decisive missing context. Use this
+shape:
+
+```text
+RCA gerado e validado:
+
+<resumo operacional em duas a quatro frases>
+
+- Saída: <path>
+- Severidade: <severity>
+- Confiança: <confidence>
+- Status da causa: <cause status>
+- Limitação principal: <limitation>
+```
