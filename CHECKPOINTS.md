@@ -757,7 +757,10 @@ do incidente, preservando a ordem cronológica e registrando estratégia,
 quantidades e truncamento. O endpoint autenticado de operador
 `POST /v1/incidents/:incidentId/rca-handoff` exporta um contrato v1 compacto e
 sanitizado com incidente, ocorrências, severidade e o mesmo pacote de evidências
-usado na classificação. O checkout permanece explicitamente fora do pacote.
+usado na classificação. O checkout permanece explicitamente fora do pacote. Em
+2026-09-15, a resposta final da skill passou a incluir um resumo operacional de
+duas a quatro frases com impacto, causa provável e sustentação, sem extrapolar
+o diagnóstico validado.
 
 **Evidências:** módulos `services/analyzer/src/rca-handoff` e
 `services/analyzer/src/evidence/loki-source.ts`; contrato operacional em
@@ -1214,3 +1217,4 @@ Usar uma entrada por decisão tomada:
 | 2026-09-14 | Intervalo OTLP do Connect explicitado abaixo da janela do alerta; regressão `NoData` corrigida e fluxo orgânico `firing → incidente → resolved` revalidado.                         | Codex       |
 | 2026-09-15 | `checkout-api` simplificada para um único estado de indisponibilidade; endpoints e métricas auxiliares removidos e alerta direcionado a `checkout_availability`.                    | Codex       |
 | 2026-09-15 | Endpoint local autenticado e explicitamente confirmado para limpar dados operacionais sem remover schema ou migrations.                                                           | Codex       |
+| 2026-09-15 | Resposta final da skill de RCA ampliada com resumo operacional contendo impacto, causa provável e sustentação nas evidências validadas.                                            | Codex       |
