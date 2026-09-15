@@ -8,6 +8,8 @@ import { makePostgresEventStore } from "../src/persistence/postgres-event-store.
 
 const databaseUrl = process.env.TEST_DATABASE_URL
 const integration = describe.skipIf(databaseUrl === undefined)
+const makeDatabaseRuntime = (url: string) =>
+  ManagedRuntime.make(PgClient.layer({ url: Redacted.make(url) }))
 
 const event = (overrides: Partial<AlertEvent> = {}): AlertEvent => ({
   schemaVersion: 1,
@@ -28,14 +30,14 @@ const event = (overrides: Partial<AlertEvent> = {}): AlertEvent => ({
 })
 
 integration("PostgreSQL incident correlation", () => {
-  let runtime: ManagedRuntime.ManagedRuntime<PgClient.PgClient, never>
+  let runtime: ReturnType<typeof makeDatabaseRuntime>
   let store: EventStore
   let appliedMigrations: ReadonlyArray<readonly [id: number, name: string]>
 
   beforeAll(async () => {
     const redactedUrl = Redacted.make(databaseUrl!)
     appliedMigrations = await Effect.runPromise(migrateDatabase(redactedUrl))
-    runtime = ManagedRuntime.make(PgClient.layer({ url: redactedUrl }))
+    runtime = makeDatabaseRuntime(databaseUrl!)
     store = await runtime.runPromise(makePostgresEventStore)
   })
 
