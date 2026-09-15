@@ -56,35 +56,31 @@ O usuário e a senha do Grafana são definidos em `.env`.
 
 ## Falha controlada da checkout-api
 
-O checkout começa saudável:
+A aplicação possui um único modo de falha. Ela começa saudável:
 
 ```bash
+curl --fail http://localhost:8081/health
 curl --fail http://localhost:8081/checkout
 ```
 
-Ative a degradação e confirme que somente o checkout responde HTTP `503`:
+Ative a falha e confirme que o health check e o checkout respondem HTTP `503`:
 
 ```bash
 curl --request POST http://localhost:8081/control/failure
-curl --include http://localhost:8081/checkout
-curl --fail http://localhost:8081/health
-```
-
-Para o cenário de indisponibilidade, registre a mudança e derrube também o
-health check:
-
-```bash
-curl --request POST http://localhost:8081/control/change
-curl --request POST http://localhost:8081/control/failure/unavailable
 curl --include http://localhost:8081/health
+curl --include http://localhost:8081/checkout
 ```
 
 Interrompa a falha e confirme a recuperação:
 
 ```bash
 curl --request DELETE http://localhost:8081/control/failure
+curl --fail http://localhost:8081/health
 curl --fail http://localhost:8081/checkout
 ```
+
+A superfície HTTP está limitada a `/health`, `/checkout`, `/metrics` e às duas
+operações de ativação e recuperação acima.
 
 ## Logs da checkout-api
 
@@ -105,7 +101,7 @@ Para exibir somente a falha controlada:
 ```
 
 Os eventos semânticos atuais são `service_started`, `checkout_completed`,
-`checkout_failed` e `failure_mode_changed`. Todos contêm serviço, ambiente,
+`checkout_failed` e `failure_state_changed`. Todos contêm serviço, ambiente,
 timestamp e nível; eventos de requisição também contêm `reqId`.
 O logging automático de requests está desabilitado, portanto as sondagens
 periódicas em `/health` e `/metrics` não geram entradas no Loki.
@@ -127,8 +123,7 @@ checkout_requests_total{service="checkout-api", environment="local"}
 Métricas disponíveis:
 
 - `checkout_requests_total`: operações por resultado e status HTTP;
-- `checkout_request_duration_seconds`: histograma de duração por resultado;
-- `checkout_failure_mode`: `1` durante a falha controlada e `0` fora dela.
+- `checkout_availability`: `1` quando saudável e `0` durante a falha controlada.
 
 O endpoint bruto pode ser auditado em <http://localhost:8081/metrics>.
 
@@ -257,8 +252,8 @@ em comandos compartilhados, documentação ou logs.
 
 ## Auditar o alerta local
 
-O Grafana provisiona uma regra que dispara quando `checkout_failure_mode` vale
-`1` e encaminha as transições ao Analyzer. Para exercitar o fluxo completo:
+O Grafana provisiona uma regra que dispara quando `checkout_availability` vale
+`0` e encaminha as transições ao Analyzer. Para exercitar o fluxo completo:
 
 ```bash
 curl --request POST http://localhost:8081/control/failure

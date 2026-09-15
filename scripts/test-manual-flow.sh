@@ -167,8 +167,7 @@ sleep 12
 
 CURRENT_STAGE="ativação da indisponibilidade"
 info "3/7 — Simulando indisponibilidade"
-curl --fail --silent --show-error --request POST "$CHECKOUT_URL/control/change" | jq .
-curl --fail --silent --show-error --request POST "$CHECKOUT_URL/control/failure/unavailable" | jq .
+curl --fail --silent --show-error --request POST "$CHECKOUT_URL/control/failure" | jq .
 FAILURE_ENABLED=true
 
 [[ "$(http_status "$CHECKOUT_URL/health")" == 503 ]] || fail "Health deveria retornar 503"

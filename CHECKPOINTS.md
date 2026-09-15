@@ -2,7 +2,7 @@
 
 > Documento vivo de requisitos, decisões e progresso da PoC.
 >
-> Última atualização: 2026-09-03
+> Última atualização: 2026-09-15
 
 Considerações específicas para uma implantação futura são mantidas em
 `HOMOLOGACAO.md`; decisões que alterem a PoC continuam sendo registradas neste
@@ -316,11 +316,11 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 - [x] `checkout-api` inicia saudável e expõe `GET /health`.
 - [x] `GET /checkout` responde `200` em operação normal.
-- [x] `POST /control/failure` ativa deterministicamente uma resposta `503` no checkout.
-- [x] `DELETE /control/failure` interrompe a falha e restaura a resposta `200`.
-- [x] O health check continua saudável durante a falha simulada, distinguindo processo ativo de operação degradada.
+- [x] `POST /control/failure` torna deterministicamente o health check e o checkout indisponíveis com HTTP `503`.
+- [x] `DELETE /control/failure` interrompe a falha e restaura as respostas `200`.
+- [x] A superfície fica limitada aos endpoints de health, checkout, métricas, ativação e recuperação da falha.
 
-**Evidências:** dois testes automatizados, typecheck sem erros, build do container concluído e sequência manual `200 → 503 → 200` validada em 2026-08-27.
+**Evidências:** sequência `200 → 503 → 200` coberta por testes automatizados; o modelo anterior com degradação, indisponibilidade e marcador de mudança foi simplificado pela DEC-021.
 
 #### CP-03A.1 — Padronizar a borda HTTP
 
@@ -339,13 +339,13 @@ checkout-api ── métricas ──> Prometheus ──┐
 **Estado:** `CONCLUÍDO`
 
 - [x] `checkout-api` emite logs JSON com serviço, ambiente, timestamp e nível; logs de requisição também incluem `reqId`.
-- [x] Operações saudável, degradada e mudança do modo de falha geram eventos semânticos distintos.
+- [x] Operação saudável, falha e mudança do estado controlado geram eventos semânticos distintos.
 - [x] Logging automático de requests desabilitado; sondagens de `/health` e `/metrics` não geram ruído no Loki.
 - [x] Alloy descobre somente o container da `checkout-api`, processa seus logs e os envia ao Loki.
 - [x] A consulta LogQL da falha retorna `checkout_failed` com código de erro e status HTTP.
 - [x] O datasource Loki foi confirmado saudável pela API do Grafana.
 
-**Evidências:** consulta `{service="checkout-api", environment="local"} | json | event="checkout_failed"` retornou exatamente o evento de falha com `error_code="payment_provider_unavailable"` e `http_status=503`; datasource Loki respondeu `status=OK` em 2026-08-27.
+**Evidências:** consulta `{service="checkout-api", environment="local"} | json | event="checkout_failed"` retorna o evento de falha com `error_code="service_unavailable"` e `http_status=503`; datasource Loki confirmado saudável.
 
 **Limitação local:** o Alloy acessa `/var/run/docker.sock` para descoberta e leitura dos logs. A montagem é aceitável somente na PoC local e não representa a estratégia recomendada para produção.
 
@@ -355,8 +355,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 - [x] `GET /metrics` expõe métricas no formato Prometheus.
 - [x] Contador separa operações por resultado e status HTTP com labels limitadas.
-- [x] Histograma registra duração da operação por resultado.
-- [x] Gauge informa se o modo de falha controlada está ativo.
+- [x] Gauge informa diretamente se a aplicação está disponível.
 - [x] Prometheus coleta o target `checkout-api:8081` sem erro.
 - [x] A consulta PromQL retorna séries saudável e de falha através do datasource do Grafana.
 
@@ -423,7 +422,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 - [x] Contact point autenticado com Bearer é provisionado como código.
 - [x] Notification policy encaminha alertas ao Analyzer.
-- [x] Regra provisionada observa o gauge `checkout_failure_mode`.
+- [x] Regra provisionada observa o gauge `checkout_availability`.
 - [x] Transições reais `firing` e `resolved` são aceitas pelo Analyzer.
 - [x] Fixture foi atualizada com um payload real e anonimizado do Grafana 13.2.0.
 - [x] Ambiente foi restaurado com a falha desativada e a regra em estado `Normal`.
@@ -710,11 +709,11 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Política inicial:** o catálogo versionado define a `checkout-api` como criticidade `high` no ambiente `local`, com teto `critica`. Tráfego sem impacto é informativo; uma falha isolada é baixa; múltiplas falhas são médias; falha por pelo menos 60 segundos ou cinco falhas com taxa mínima de 50% é alta; disponibilidade igual a zero em serviço de alta criticidade é crítica. Ausência de sinais mensuráveis ou de metadados do serviço/ambiente produz resultado inconclusivo.
 
-**Auditoria dos sinais disponíveis:** `checkout-api` agora distingue `healthy`, `degraded` e `unavailable`, expõe `checkout_availability` e registra `checkout_last_change_timestamp_seconds`. A mudança recente é somente uma observação contextual. A regra crítica depende exclusivamente da indisponibilidade medida e não do texto do alerta nem da proximidade com a mudança.
+**Auditoria dos sinais disponíveis:** a `checkout-api` possui somente os estados saudável e indisponível. Ela expõe `checkout_requests_total` e `checkout_availability`; a regra crítica depende exclusivamente da indisponibilidade medida, não do texto do alerta.
 
 **Generalização pós-entrega:** o classificador não conhece nomes de métricas de nenhum serviço. Um catálogo externo associa `service + environment` a criticidade, teto e consultas PromQL; a coleta converte os resultados em sinais de impacto normalizados antes de aplicar as regras. A `checkout-api` é o primeiro perfil e um novo serviço pode ser cadastrado sem recompilar o Analyzer. O Alloy recebe logs e métricas OTLP e normaliza `service.name` e `deployment.environment.name` para a identidade usada pelo incidente.
 
-**Evidências:** módulo `services/analyzer/src/severity`; endpoint autenticado `POST /v1/incidents/:incidentId/severity`; modos e métricas controláveis em `services/checkout-api`; testes automatizados dos cenários CV-01 (`baixa`), CV-02 (`alta`) e CV-03 (`critica`); 51 testes, typecheck e build aprovados. Após a generalização, CV-03 foi revalidado no incidente `5db1fa0e-b999-42df-acad-d9cee49731a6`, com regra `SERVICE_UNAVAILABLE`, evidência normalizada `metrics-4` e mudança recente explicitamente tratada como não causal. Logs e métrica OTLP de `connect-external/test` também foram recebidos e consultados no Loki e Prometheus. Counters positivos sem amostra-base passaram a produzir sinal desconhecido e limitação explícita, enquanto counters inicializados em zero, resets e múltiplas séries são medidos deterministicamente.
+**Evidências:** módulo `services/analyzer/src/severity`; classificação exercitada internamente pela exportação do handoff; falha e métricas controláveis em `services/checkout-api`; testes automatizados dos cenários CV-01 (`baixa`), CV-02 (`alta`) e CV-03 (`critica`); 51 testes, typecheck e build aprovados. Após a generalização, CV-03 foi revalidado no incidente `5db1fa0e-b999-42df-acad-d9cee49731a6`, com regra `SERVICE_UNAVAILABLE` e evidência normalizada `metrics-4`. Logs e métrica OTLP de `connect-external/test` também foram recebidos e consultados no Loki e Prometheus. Counters positivos sem amostra-base passaram a produzir sinal desconhecido e limitação explícita, enquanto counters inicializados em zero, resets e múltiplas séries são medidos deterministicamente.
 
 **Correção pós-entrega em 2026-09-14:** o reader de métricas criado manualmente pelo Connect usava o default interno de 60 segundos e não aplicava `OTEL_METRIC_EXPORT_INTERVAL`. Como as amostras podiam ficar ligeiramente mais de 60 segundos separadas, a regra `increase(...[1m])` retornava `NoData` mesmo após respostas `5xx`. O Connect passou a configurar explicitamente intervalo de 10 segundos e timeout de 5 segundos, com suporte às variáveis OTEL e teste de regressão. Uma falha orgânica em `/propostas` voltou a produzir `firing`, incidente e `resolved` no fluxo real.
 
@@ -914,12 +913,12 @@ Os cenários abaixo formam a linha de base aprovada no CP-00. Os valores exatos 
 - **Valida:** correlação, deduplicação, estimativa de impacto, classificação e roteamento.
 - **Estado:** `APROVADO`.
 
-### CV-03 — Serviço indisponível após mudança
+### CV-03 — Serviço indisponível
 
-- **Entrada controlada:** registrar uma mudança de versão ou configuração e, depois, tornar o serviço indisponível.
-- **Sinais:** marcador da mudança, falhas de health check, taxa elevada de erros e logs da aplicação.
-- **Resultado esperado:** identificar indisponibilidade e proximidade temporal com a mudança; classificar como crítico no ambiente definido para o teste; sugerir verificação ou rollback, sem declarar que a mudança foi a causa quando houver apenas correlação temporal.
-- **Valida:** criticidade, uso conjunto de evidências e distinção entre correlação e causalidade.
+- **Entrada controlada:** ativar a falha única da `checkout-api` e tornar health check e checkout indisponíveis.
+- **Sinais:** disponibilidade igual a zero, resposta HTTP `503` e logs da aplicação.
+- **Resultado esperado:** identificar indisponibilidade e classificar como crítico no ambiente definido para o teste, sem inventar uma causa além da falha controlada observada.
+- **Valida:** criticidade e uso conjunto de evidências.
 - **Estado:** `APROVADO`.
 
 ## Riscos conhecidos
@@ -1153,6 +1152,16 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** ambientes locais que aplicaram a cadeia anterior precisam recriar o banco uma vez; o schema inicial fica menor e diretamente auditável; após existir persistência durável, toda evolução volta a ocorrer por migrations incrementais imutáveis.
 - **Checkpoints afetados:** CP-05 e CP-06.
 
+### DEC-021 — Simplificar a aplicação sintética de checkout
+
+- **Data:** 2026-09-15
+- **Estado:** aceita
+- **Contexto:** os modos separado de degradação e indisponibilidade e o marcador artificial de mudança aumentavam a superfície da aplicação de demonstração sem contribuir para o fluxo principal da apresentação.
+- **Decisão:** manter um único estado controlado de indisponibilidade, ativado por `POST /control/failure` e recuperado por `DELETE /control/failure`. Remover consulta do controle, endpoint alternativo de indisponibilidade, marcador de mudança, histograma, gauge de modo de falha e métricas exclusivas desses comportamentos. O alerta passa a observar diretamente `checkout_availability`.
+- **Alternativas consideradas:** preservar os três estados; manter o marcador de mudança; remover também o endpoint de checkout.
+- **Consequências:** a aplicação conserva apenas health, checkout, métricas e duas operações de controle; o cenário sintético crítico continua reproduzível pela disponibilidade igual a zero; testes e documentação deixam de sugerir causalidade por uma mudança artificial.
+- **Checkpoints afetados:** CP-03, CP-04 e CP-08.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                                                                                                                                          | Responsável |
@@ -1193,3 +1202,4 @@ Usar uma entrada por decisão tomada:
 | 2026-09-08 | Política de correlação v2 concluída com `incident_scope`, fallback conservador, merge determinístico, paridade PostgreSQL/memória e validação orgânica multi-alerta no Connect.                     | Codex       |
 | 2026-09-10 | Migrations do Analyzer consolidadas em uma baseline limpa, validada com o adapter em PostgreSQL efêmero vazio.                                                                      | Codex       |
 | 2026-09-14 | Intervalo OTLP do Connect explicitado abaixo da janela do alerta; regressão `NoData` corrigida e fluxo orgânico `firing → incidente → resolved` revalidado.                         | Codex       |
+| 2026-09-15 | `checkout-api` simplificada para um único estado de indisponibilidade; endpoints e métricas auxiliares removidos e alerta direcionado a `checkout_availability`.                    | Codex       |
