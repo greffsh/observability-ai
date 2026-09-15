@@ -158,6 +158,16 @@ export const makeMemoryEventStore = (options?: {
   }
 
   return {
+    clearAll: () => Effect.sync(() => {
+      storedEvents.clear()
+      occurrences.clear()
+      occurrenceIdsByKey.clear()
+      incidentIdsByOccurrence.clear()
+      incidents.clear()
+      eventSequence = 0
+      occurrenceSequence = 0
+      incidentSequence = 0
+    }),
     record: (events) => Effect.sync(() => {
       const insertedEventIds: Array<string> = []
       const duplicateEventIds: Array<string> = []

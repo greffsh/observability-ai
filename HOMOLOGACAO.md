@@ -16,7 +16,7 @@
 | Dados e IA | Definir mascaramento, campos permitidos, retenção e quais logs podem ser enviados ao provedor de IA. | PENDENTE |
 | Persistência | Definir PostgreSQL, migrations, backup, retenção e credencial exclusiva do Analyzer. | PENDENTE |
 | Confiabilidade | Validar idempotência, deduplicação, retries, timeouts e comportamento quando Grafana, banco, datasources ou modelo falharem. | PENDENTE |
-| Operação | Monitorar o próprio Analyzer, manter trilha de auditoria e definir responsável por suporte e rollback. | PENDENTE |
+| Operação | Monitorar o próprio Analyzer, manter trilha de auditoria e definir responsável por suporte e rollback. Manter `ANALYZER_DATABASE_RESET_ENABLED=false` fora de ambientes locais descartáveis. | PENDENTE |
 | Liberação | Começar com alerta sintético, canal restrito e modo sombra, sem ação automática. | PENDENTE |
 
 ## Informações a levantar

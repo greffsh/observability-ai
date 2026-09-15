@@ -24,6 +24,18 @@ const event = (overrides: Partial<AlertEvent> = {}): AlertEvent => ({
 const required = <A>(value: Option.Option<A>): A => Option.getOrThrow(value)
 
 describe("in-memory incident correlation", () => {
+  it("clears all operational data", async () => {
+    const store = makeMemoryEventStore()
+    const firing = event()
+
+    await Effect.runPromise(store.record([firing]))
+    await Effect.runPromise(store.clearAll())
+
+    expect(Option.isNone(await Effect.runPromise(store.findByEventId(firing.eventId))))
+      .toBe(true)
+    expect(await Effect.runPromise(store.listIncidents({}))).toEqual([])
+  })
+
   it("does not create or update an incident for a duplicate event", async () => {
     let tick = 0
     const store = makeMemoryEventStore({

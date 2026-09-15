@@ -20,6 +20,7 @@ import {
 } from "./domain/incident.js"
 
 type AppOptions = {
+  databaseResetEnabled?: boolean
   eventStore: EventStore
   grafanaWebhookSecret: string
   logger?: FastifyBaseLogger
@@ -139,6 +140,35 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
     status: "ok",
     service: "analyzer"
   }))
+
+  if (options.databaseResetEnabled === true) {
+    app.delete("/v1/admin/database", {
+      onRequest: authenticateOperator
+    }, async (request, reply) => {
+      if (request.headers["x-confirm-database-reset"] !== "true") {
+        return reply.code(400).send({
+          error: "database_reset_confirmation_required"
+        })
+      }
+
+      const result = await runEffect(Effect.either(options.eventStore.clearAll()))
+      if (Either.isLeft(result)) {
+        return reply.code(503).send({ error: "persistence_unavailable" })
+      }
+
+      await runEffect(
+        Effect.logWarning("Analyzer operational data cleared").pipe(
+          Effect.annotateLogs({
+            event: "analyzer_database_cleared",
+            reqId: request.id,
+            operator_id: options.operatorId.trim()
+          })
+        )
+      )
+
+      return reply.code(200).send({ status: "cleared" })
+    })
+  }
 
   app.post("/v1/webhooks/grafana", {
     bodyLimit: 256 * 1024,

@@ -272,6 +272,24 @@ O Analyzer registra apenas os IDs dos eventos normalizados, não o corpo bruto
 do webhook. As configurações versionadas ficam em
 `infra/grafana/provisioning/alerting`.
 
+## Limpar os dados locais do Analyzer
+
+A stack local habilita um endpoint destrutivo para remover todos os eventos,
+ocorrências, incidentes e auditorias de correlação, preservando apenas o schema
+e o histórico de migrations:
+
+```bash
+curl --fail --request DELETE \
+  --header "Authorization: Bearer change-me-operator" \
+  --header "X-Confirm-Database-Reset: true" \
+  http://localhost:8080/v1/admin/database
+```
+
+A resposta esperada é `{"status":"cleared"}`. O endpoint usa a credencial do
+operador, exige confirmação explícita e só é registrado quando
+`ANALYZER_DATABASE_RESET_ENABLED=true`. Essa opção é habilitada pelo Compose
+local e deve permanecer desabilitada fora de ambientes descartáveis.
+
 ## Migrations do Analyzer
 
 O Analyzer aplica migrations do PostgreSQL antes de abrir a porta HTTP. Para

@@ -1162,6 +1162,16 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** a aplicação conserva apenas health, checkout, métricas e duas operações de controle; o cenário sintético crítico continua reproduzível pela disponibilidade igual a zero; testes e documentação deixam de sugerir causalidade por uma mudança artificial.
 - **Checkpoints afetados:** CP-03, CP-04 e CP-08.
 
+### DEC-022 — Reset explícito dos dados operacionais locais
+
+- **Data:** 2026-09-15
+- **Estado:** aceita
+- **Contexto:** os ensaios repetidos da PoC precisam começar sem eventos e incidentes anteriores, sem recriar o schema ou apagar o registro de migrations.
+- **Decisão:** disponibilizar `DELETE /v1/admin/database` somente quando habilitado por configuração, autenticado como operador e protegido por um header de confirmação. A operação remove atomicamente todas as tabelas operacionais e preserva `effect_sql_migrations`.
+- **Alternativas consideradas:** executar `docker compose down --volumes`; fornecer SQL manual; manter o endpoint sempre disponível.
+- **Consequências:** o estado dos ensaios pode ser limpo sem recriar a stack; a opção permanece habilitada apenas no Compose local e deve ficar desativada em ambientes persistentes.
+- **Checkpoints afetados:** CP-02, CP-05 e CP-13.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                                                                                                                                          | Responsável |
@@ -1203,3 +1213,4 @@ Usar uma entrada por decisão tomada:
 | 2026-09-10 | Migrations do Analyzer consolidadas em uma baseline limpa, validada com o adapter em PostgreSQL efêmero vazio.                                                                      | Codex       |
 | 2026-09-14 | Intervalo OTLP do Connect explicitado abaixo da janela do alerta; regressão `NoData` corrigida e fluxo orgânico `firing → incidente → resolved` revalidado.                         | Codex       |
 | 2026-09-15 | `checkout-api` simplificada para um único estado de indisponibilidade; endpoints e métricas auxiliares removidos e alerta direcionado a `checkout_availability`.                    | Codex       |
+| 2026-09-15 | Endpoint local autenticado e explicitamente confirmado para limpar dados operacionais sem remover schema ou migrations.                                                           | Codex       |

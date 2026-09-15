@@ -305,6 +305,19 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
     `
 
     return {
+      clearAll: () => sql`
+        TRUNCATE TABLE
+          alert_events,
+          incident_occurrences,
+          incident_merges,
+          incident_splits,
+          alert_occurrences,
+          incidents
+        RESTART IDENTITY
+      `.pipe(
+        Effect.map(() => undefined),
+        Effect.mapError((cause) => new EventStoreError({ operation: "clear", cause }))
+      ),
       record: (events) => sql.withTransaction(
         Effect.gen(function* () {
           const insertedEventIds: Array<string> = []

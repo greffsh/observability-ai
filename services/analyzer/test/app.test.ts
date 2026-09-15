@@ -28,6 +28,7 @@ beforeEach(() => {
     catalog: checkoutServiceCatalog
   })
   app = buildApp({
+    databaseResetEnabled: true,
     eventStore,
     grafanaWebhookSecret: "test-webhook-secret",
     operatorId: "test-operator",
@@ -55,6 +56,69 @@ describe("Analyzer HTTP API", () => {
       status: "ok",
       service: "analyzer"
     })
+  })
+
+  it("clears all operational data with explicit operator confirmation", async () => {
+    const eventId = "fixture-checkout-failure:firing:2026-08-28T13:21:00.000Z"
+    await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/grafana",
+      headers: { authorization: "Bearer test-webhook-secret" },
+      payload: firingWebhookFixture
+    })
+
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/v1/admin/database",
+      headers: {
+        authorization: "Bearer test-operator-token",
+        "x-confirm-database-reset": "true"
+      }
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toEqual({ status: "cleared" })
+
+    const incidents = await app.inject({
+      method: "GET",
+      url: "/v1/incidents",
+      headers: { authorization: "Bearer test-operator-token" }
+    })
+    expect(incidents.json()).toEqual({ incidents: [] })
+
+    const storedEvent = await app.inject({
+      method: "GET",
+      url: `/v1/events/${encodeURIComponent(eventId)}`,
+      headers: { authorization: "Bearer test-operator-token" }
+    })
+    expect(storedEvent.statusCode).toBe(404)
+  })
+
+  it("requires explicit confirmation before clearing operational data", async () => {
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/v1/admin/database",
+      headers: { authorization: "Bearer test-operator-token" }
+    })
+
+    expect(response.statusCode).toBe(400)
+    expect(response.json()).toEqual({
+      error: "database_reset_confirmation_required"
+    })
+  })
+
+  it("does not authorize database reset with the Grafana credential", async () => {
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/v1/admin/database",
+      headers: {
+        authorization: "Bearer test-webhook-secret",
+        "x-confirm-database-reset": "true"
+      }
+    })
+
+    expect(response.statusCode).toBe(401)
+    expect(response.json()).toEqual({ error: "unauthorized" })
   })
 
   it("rejects a webhook without Bearer authentication", async () => {
@@ -443,6 +507,10 @@ describe("Analyzer HTTP API", () => {
 
   it("returns 503 when an accepted event cannot be persisted", async () => {
     const unavailableStore: EventStore = {
+      clearAll: () => Effect.fail(new EventStoreError({
+        operation: "clear",
+        cause: new Error("database unavailable")
+      })),
       record: () => Effect.fail(new EventStoreError({
         operation: "record",
         cause: new Error("database unavailable")

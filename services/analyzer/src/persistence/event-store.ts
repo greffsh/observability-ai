@@ -8,7 +8,7 @@ import type {
 } from "../domain/incident.js"
 
 export class EventStoreError extends Data.TaggedError("EventStoreError")<{
-  readonly operation: "close" | "find" | "record"
+  readonly operation: "clear" | "close" | "find" | "record"
   readonly cause: unknown
 }> {}
 
@@ -50,6 +50,7 @@ export type StoredAlertEvent = {
 }
 
 export type EventStore = {
+  readonly clearAll: () => Effect.Effect<void, EventStoreError>
   readonly record: (
     events: ReadonlyArray<AlertEvent>
   ) => Effect.Effect<RecordAlertEventsResult, EventStoreError>

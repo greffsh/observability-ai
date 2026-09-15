@@ -17,6 +17,9 @@ const configuration = Config.all({
   databaseUrl: Config.redacted("DATABASE_URL"),
   grafanaWebhookSecret: Config.redacted("GRAFANA_WEBHOOK_SECRET"),
   operatorToken: Config.redacted("ANALYZER_OPERATOR_TOKEN"),
+  databaseResetEnabled: Config.boolean("ANALYZER_DATABASE_RESET_ENABLED").pipe(
+    Config.withDefault(false)
+  ),
   operatorId: Config.string("ANALYZER_OPERATOR_ID").pipe(
     Config.withDefault("local-operator")
   ),
@@ -95,6 +98,7 @@ const main = Effect.gen(function* () {
   })
 
   const app = buildApp({
+    databaseResetEnabled: config.databaseResetEnabled,
     eventStore,
     grafanaWebhookSecret: Redacted.value(config.grafanaWebhookSecret),
     operatorId: config.operatorId,

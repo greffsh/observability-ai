@@ -54,6 +54,20 @@ integration("PostgreSQL incident correlation", () => {
     expect(appliedMigrations).toEqual([[1, "initial_schema"]])
   })
 
+  it("clears all operational data without removing the schema", async () => {
+    const firing = event()
+    await runtime.runPromise(store.record([firing]))
+
+    await runtime.runPromise(store.clearAll())
+
+    expect(Option.isNone(await runtime.runPromise(store.findByEventId(firing.eventId))))
+      .toBe(true)
+    expect(await runtime.runPromise(store.listIncidents({}))).toEqual([])
+    expect(await runtime.runPromise(store.record([firing]))).toMatchObject({
+      insertedEventIds: [firing.eventId]
+    })
+  })
+
   it("keeps compatible late alerts in an incident with an open occurrence", async () => {
     const lateErrorRate = event({
       eventId: "errors:firing:2026-08-28T10:30:00.000Z",
