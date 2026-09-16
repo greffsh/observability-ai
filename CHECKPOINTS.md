@@ -2,7 +2,7 @@
 
 > Documento vivo de requisitos, decisões e progresso da PoC.
 >
-> Última atualização: 2026-09-15
+> Última atualização: 2026-09-16
 
 Considerações específicas para uma implantação futura são mantidas em
 `HOMOLOGACAO.md`; decisões que alterem a PoC continuam sendo registradas neste
@@ -229,8 +229,11 @@ checkout-api ── métricas ──> Prometheus ──┐
                                            │
                                            ├── consulta Prometheus e Loki
                                            ├── persiste no PostgreSQL
-                                           └── expõe contexto e severidade
-                                                      │ handoff manual
+                                           └── expõe API operacional
+                                                      │
+                                                      v
+                                            interface do operador
+                                                      │ handoff no clipboard
                                                       v
                                          agente de RCA + checkout local
 ```
@@ -244,7 +247,8 @@ checkout-api ── métricas ──> Prometheus ──┐
 - Grafana Alloy para coleta e encaminhamento dos logs;
 - Analyzer como aplicação independente, sem acesso ao repositório nem cliente de IA neste corte;
 - PostgreSQL como persistência e fila durável inicial do Analyzer;
-- aplicação genérica `checkout-api` com modos de falha controlados;
+- aplicação genérica `checkout-api` com falha controlada;
+- interface web mínima para listar incidentes e exportar o handoff;
 - receptor local de webhook como destino inicial, sem integração externa;
 - sem Redis, fila dedicada, Tempo, Hub ou canal corporativo neste primeiro corte.
 
@@ -730,6 +734,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 - contrato único de handoff com incidente, ocorrências, evidências e severidade;
 - skill e instruções versionadas para gerar o RCA;
 - mecanismo simples para exportar o contexto e apontar o checkout local ao agente;
+- interface operacional mínima para listar, filtrar e copiar o handoff;
 - contrato estruturado de saída do RCA;
 - suporte explícito a contexto insuficiente;
 
@@ -772,6 +777,28 @@ o truncamento. A skill `.agents/skills/incident-rca` e seu contrato de saída
 Markdown foram
 validados estruturalmente, incluindo a rejeição de severidade divergente e de
 citações inexistentes. A execução avaliada do primeiro RCA ainda está pendente.
+
+#### CP-09A — Disponibilizar interface mínima do operador
+
+**Estado:** `EM ANDAMENTO`
+
+- [x] A interface lista incidentes pela API operacional do Analyzer.
+- [x] O operador pode filtrar por `open`, `awaiting_confirmation` e `closed` em abas com contadores, sem nova consulta ou flicker.
+- [x] Datas são apresentadas relativamente com o instante exato acessível, e o ID pode ser copiado.
+- [x] A seleção de uma linha abre os detalhes e ocorrências do incidente sem sobrecarregar a tabela.
+- [x] Uma atualização manual preserva a lista existente enquanto a nova resposta é buscada.
+- [x] Incidentes abertos ou aguardando confirmação oferecem uma ação que gera um novo handoff e copia o JSON para o clipboard.
+- [x] Incidentes encerrados e aliases `merged` não oferecem a ação de handoff.
+- [x] Incidentes em `awaiting_confirmation` podem ser fechados com motivo auditável e nota opcional; incidentes `open` não oferecem essa ação.
+- [x] O token não é incorporado ao bundle e permanece somente no `sessionStorage`.
+- [x] O frontend usa proxy same-origin e não amplia a política CORS do Analyzer.
+- [ ] O fluxo visual, a escrita real no clipboard e o fechamento foram confirmados manualmente em um navegador.
+
+**Evidências:** aplicação React/Vite em `services/operator-ui`; serviço estático e
+proxy em `services/operator-ui/nginx.conf`; integração em `compose.yaml`;
+`pnpm typecheck`, `pnpm build`, `docker compose config --quiet`, build da imagem,
+health check, filtros e geração do handoff pelo proxy validados em 2026-09-16.
+A confirmação manual do clipboard no navegador permanece pendente.
 
 ---
 
@@ -1175,6 +1202,16 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** o estado dos ensaios pode ser limpo sem recriar a stack; a opção permanece habilitada apenas no Compose local e deve ficar desativada em ambientes persistentes.
 - **Checkpoints afetados:** CP-02, CP-05 e CP-13.
 
+### DEC-023 — Interface operacional web mínima
+
+- **Data:** 2026-09-16
+- **Estado:** aceita
+- **Contexto:** listar incidentes e exportar handoffs somente por comandos `curl` adicionava atrito à demonstração e ao handoff supervisionado, sem justificar a construção do Hub completo.
+- **Decisão:** criar uma única interface React/Vite para listar e filtrar incidentes, gerar/copiar handoffs e fechar incidentes aguardando confirmação com motivo auditável. O token é fornecido pelo operador e mantido no `sessionStorage`; um proxy same-origin encaminha somente as chamadas da UI ao Analyzer. Incidentes `merged` ficam fora da lista operacional e somente `open` e `awaiting_confirmation` oferecem a ação de handoff.
+- **Alternativas consideradas:** TypeScript sem framework; Next.js; incorporar o token ao bundle; habilitar CORS diretamente no Analyzer; implementar já login, papéis e detalhes completos do incidente.
+- **Consequências:** a operação básica ganha uma interface pequena sem alterar contratos do Analyzer; a autenticação continua adequada apenas à PoC local e deverá ser substituída por sessão ou BFF antes de homologação; o Hub completo permanece fora do escopo.
+- **Checkpoints afetados:** CP-01, CP-09 e CP-13.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                                                                                                                                          | Responsável |
@@ -1218,3 +1255,4 @@ Usar uma entrada por decisão tomada:
 | 2026-09-15 | `checkout-api` simplificada para um único estado de indisponibilidade; endpoints e métricas auxiliares removidos e alerta direcionado a `checkout_availability`.                    | Codex       |
 | 2026-09-15 | Endpoint local autenticado e explicitamente confirmado para limpar dados operacionais sem remover schema ou migrations.                                                           | Codex       |
 | 2026-09-15 | Resposta final da skill de RCA ampliada com resumo operacional contendo impacto, causa provável e sustentação nas evidências validadas.                                            | Codex       |
+| 2026-09-16 | Interface operacional mínima implementada para listar, filtrar, gerar/copiar handoffs e fechar incidentes aguardando confirmação; validação manual permanece pendente.             | Codex       |

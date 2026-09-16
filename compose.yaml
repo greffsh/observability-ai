@@ -59,6 +59,26 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  operator-ui:
+    build:
+      context: ./services/operator-ui
+    ports:
+      - "${OPERATOR_UI_PORT:-8082}:8080"
+    depends_on:
+      analyzer:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --spider
+        - -q
+        - http://127.0.0.1:8080/healthz
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   postgres:
     image: postgres:18.6-alpine
     environment:

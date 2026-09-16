@@ -7,7 +7,7 @@ para uma implantação futura ficam em [HOMOLOGACAO.md](HOMOLOGACAO.md).
 ## Pré-requisitos
 
 - Docker com Docker Compose;
-- portas locais 3000, 3100, 4317, 4318, 8080, 8081, 9090 e 12345 disponíveis.
+- portas locais 3000, 3100, 4317, 4318, 8080, 8081, 8082, 9090 e 12345 disponíveis.
 
 Node.js e pnpm são necessários apenas para desenvolver as aplicações
 TypeScript fora dos containers.
@@ -35,6 +35,7 @@ Verifique o estado:
 docker compose ps
 curl --fail http://localhost:8080/health
 curl --fail http://localhost:8081/health
+curl --fail http://localhost:8082/healthz
 curl --fail http://localhost:9090/-/ready
 curl --fail http://localhost:3100/ready
 curl --fail http://localhost:12345/-/ready
@@ -47,12 +48,30 @@ Interfaces locais:
 |---|---|
 | Analyzer | <http://localhost:8080/health> |
 | checkout-api | <http://localhost:8081/health> |
+| Interface do operador | <http://localhost:8082> |
 | Grafana | <http://localhost:3000> |
 | Prometheus | <http://localhost:9090> |
 | Loki | <http://localhost:3100/ready> |
 | Alloy | <http://localhost:12345> |
 
 O usuário e a senha do Grafana são definidos em `.env`.
+
+## Interface do operador
+
+Abra <http://localhost:8082> e informe o valor local de
+`ANALYZER_OPERATOR_TOKEN`. A credencial permanece somente no `sessionStorage`
+do navegador. A interface lista os incidentes em abas por status, apresenta
+datas relativas com horário exato sob demanda e abre os detalhes e ocorrências
+ao selecionar uma linha. O ID pode ser copiado diretamente. Para incidentes
+abertos ou aguardando confirmação, a interface gera um novo handoff e copia o
+JSON para o clipboard. Incidentes aguardando confirmação também podem ser
+encerrados pela interface, com motivo auditável e nota opcional.
+
+Incidentes abertos não podem ser encerrados enquanto houver ocorrências ativas.
+Incidentes mesclados não aparecem na listagem operacional padrão e incidentes
+encerrados não oferecem ações. O navegador precisa permitir acesso
+ao clipboard; `localhost` é considerado um contexto seguro pelos navegadores
+modernos.
 
 ## Falha controlada da checkout-api
 
@@ -148,6 +167,18 @@ pnpm dev
 
 Para desenvolver a aplicação demonstrativa, use os mesmos comandos em
 `services/checkout-api`; sua porta padrão é `8081`.
+
+Para desenvolver a interface fora do container, mantenha o Analyzer na porta
+`8080` e execute:
+
+```bash
+cd services/operator-ui
+pnpm install
+pnpm dev
+```
+
+O servidor Vite abre a porta `8082` e encaminha `/api` ao Analyzer sem exigir
+CORS.
 
 ## Webhook do Analyzer
 
