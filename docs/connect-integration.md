@@ -90,16 +90,22 @@ exigem uma regra externa de indisponibilidade, ainda fora deste contrato.
 
 ## Connect em microserviços
 
-No checkout `sancor-connect-micros`, todos os `main.ts` carregam
-`@sancor/common-utils/instrumentation` antes do NestJS. O pacote compartilhado
-configura logs de erro OTLP sanitizados, métricas com exportação a cada 10
-segundos e traces; a instrumentação de filesystem fica desabilitada. Os
-`.env.example` definem uma identidade distinta por micro.
+No ensaio atual do checkout `sancor-connect-micros`, somente o gateway carrega
+`./instrumentation` antes do NestJS. Os demais serviços mantêm sua inicialização
+anterior; pelo menos um deles deve ser executado como downstream real durante o
+teste integrado.
 
-O gateway usa `service.name=connect-gateway` e é o sinal principal de impacto:
+O gateway usa `service.name=micros-gateway` e é o sinal principal de impacto:
 seu interceptor incrementa `http.server.requests` com `outcome=success|failure`,
-compatível com a regra genérica e com o catálogo do Analyzer. Os demais micros
-não disparam impacto externo por conta própria, mas participam do mesmo trace
-para localizar a chamada interna com falha. A instrumentação HTTP propaga W3C
-automaticamente; o CLS copia o span ativo, usando `x-trace-id`/`x-span-id`
-somente como fallback temporário.
+compatível com a regra genérica e com o catálogo do Analyzer. Ele também exporta
+logs de erro OTLP sanitizados e traces HTTP, com a instrumentação de filesystem
+desabilitada. A extensão do trace aos micros downstream fica para uma etapa
+posterior, quando houver um cenário que realmente exija localização interna.
+
+Não existe um runner isolado de observabilidade. Com a stack Grafana AI e as
+dependências normais dos micros já iniciadas, execute `domain-api` e gateway
+pelos comandos usuais do monorepo, configurando a rota `domain` no gateway.
+Valide primeiro `GET /domain/ping` e aguarde ao menos 15 segundos para exportar
+a linha de base da métrica; depois interrompa `domain-api` e repita a mesma
+chamada. A indisponibilidade real do downstream deve retornar `5xx` pelo
+gateway e gerar métrica, log, trace, alerta e incidente de `micros-gateway`.

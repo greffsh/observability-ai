@@ -785,9 +785,18 @@ citações inexistentes. A integração Tempo foi validada no incidente
 `62b5e342-b81b-4319-bda3-7baf5b5ee8be`: o handoff retornou dois traces HTTP do
 `connect-api`, com 12 spans cada e sem truncamento após excluir spans de startup.
 No monorepo de micros, o trace `41920b6fb4d7194f1f4f77d45e72c7eb`
-atravessou `connect-gateway → domain-api`; a métrica do gateway apareceu no
+atravessou `micros-gateway → domain-api`; a métrica do gateway apareceu no
 Prometheus e um erro controlado exportou ao Loki apenas corpo fixo e campos de
-correlação permitidos. A execução avaliada do primeiro RCA ainda está pendente.
+correlação permitidos. O runner isolado foi removido: o ensaio final executa o
+`micros-gateway` junto de um `domain-api` real, valida `/domain/ping` e provoca
+indisponibilidade orgânica interrompendo somente o downstream antes de repetir
+a mesma chamada. O ensaio retornou `pong` antes da interrupção e cinco respostas
+`500` depois dela; Prometheus registrou aumento de cinco falhas, e o Analyzer
+correlacionou a nova ocorrência ao incidente aberto
+`446aee61-67aa-4dc5-9bea-506e68e29ef7`. Seu handoff reuniu
+alerta, métricas, um log sanitizado e três traces; os client spans registraram
+`ECONNREFUSED` em `127.0.0.1:3102`. A instrumentação dos outros micros permanece
+fora do escopo. A execução avaliada do primeiro RCA ainda está pendente.
 
 #### CP-09A — Disponibilizar interface mínima do operador
 

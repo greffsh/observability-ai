@@ -25,6 +25,18 @@
           }
         }
       }
+    },
+    "micros-gateway": {
+      "criticality": "medium",
+      "environments": {
+        "local": {
+          "severityCeiling": "alta",
+          "impactQueries": {
+            "totalRequests": "http_server_requests_total{service=\"{{service}}\",environment=\"{{environment}}\"}",
+            "failedRequests": "http_server_requests_total{service=\"{{service}}\",environment=\"{{environment}}\",outcome=\"failure\"}"
+          }
+        }
+      }
     }
   }
 }
