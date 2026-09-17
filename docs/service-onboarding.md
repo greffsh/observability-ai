@@ -43,10 +43,11 @@ service.name=connect-api
 deployment.environment.name=production
 ```
 
-O Alloy os normaliza para `service` e `environment`, envia logs ao Loki e
-métricas cumulativas ao Prometheus. Métricas OTLP delta não são aceitas pelo
-exporter Prometheus estável usado nesta PoC e devem ser convertidas antes do
-envio ou configuradas como cumulativas no SDK/Collector de origem.
+O Alloy os normaliza para `service` e `environment`, envia logs ao Loki,
+métricas cumulativas ao Prometheus e traces ao Tempo. Métricas OTLP delta não
+são aceitas pelo exporter Prometheus estável usado nesta PoC e devem ser
+convertidas antes do envio ou configuradas como cumulativas no SDK/Collector de
+origem.
 
 Exemplo de configuração, sujeito ao suporte do SDK da linguagem:
 
@@ -55,6 +56,13 @@ OTEL_SERVICE_NAME=connect-api
 OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production
 OTEL_EXPORTER_OTLP_ENDPOINT=http://HOST-DO-ALLOY:4318
 ```
+
+O SDK precisa iniciar antes do framework HTTP e dos clientes instrumentados.
+Chamadas entre serviços devem propagar W3C `traceparent`/`tracestate`; headers
+próprios podem existir por compatibilidade, mas não substituem o propagador
+OpenTelemetry. Para o handoff, o Analyzer seleciona apenas traces que contenham
+span de servidor do serviço do incidente e aplica limites de quantidade, bytes
+e atributos.
 
 As portas OTLP desta stack não possuem autenticação ou TLS e são adequadas
 somente para localhost ou rede privada de desenvolvimento. Não as exponha

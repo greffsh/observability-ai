@@ -110,7 +110,8 @@ export const makePrometheusEvidenceSource = (
       requestUrl.searchParams.set("limit", String(context.policy.maxMetricSeries))
       const response = yield* fetchJson<PrometheusResponse>(requestUrl, {
         source: "metrics",
-        timeoutMs: context.policy.sourceTimeoutMs
+        timeoutMs: context.policy.sourceTimeoutMs,
+        maxBytes: context.policy.maxSourceBytes
       })
 
       if (response.status !== "success" || response.data?.resultType !== "matrix") {

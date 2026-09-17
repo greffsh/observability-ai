@@ -57,6 +57,7 @@ otelcol.receiver.otlp "application" {
   output {
     logs    = [otelcol.processor.transform.application_identity.input]
     metrics = [otelcol.processor.transform.application_identity.input]
+    traces  = [otelcol.processor.batch.application.input]
   }
 }
 
@@ -101,6 +102,7 @@ otelcol.processor.batch "application" {
   output {
     logs    = [otelcol.exporter.loki.application.input]
     metrics = [otelcol.exporter.prometheus.application.input]
+    traces  = [otelcol.exporter.otlp.tempo.input]
   }
 }
 
@@ -110,6 +112,16 @@ otelcol.exporter.loki "application" {
 
 otelcol.exporter.prometheus "application" {
   forward_to = [prometheus.remote_write.local.receiver]
+}
+
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+
+    tls {
+      insecure = true
+    }
+  }
 }
 
 prometheus.remote_write "local" {

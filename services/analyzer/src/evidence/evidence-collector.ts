@@ -21,6 +21,10 @@ export const defaultEvidencePolicy: EvidencePolicy = {
   maxLogScanEntries: 200,
   maxMetricPoints: 121,
   maxMetricSeries: 20,
+  maxTraceScan: 10,
+  maxTraces: 3,
+  maxSpansPerTrace: 100,
+  maxSourceBytes: 1_048_576,
   maxStringLength: 4_096
 }
 

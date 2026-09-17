@@ -47,8 +47,9 @@ Todas as evidências decisivas aparecem como IDs entre crases, por exemplo
   every table row must be cited in `Diagnóstico`.
 - Copy `Fonte` and `Referência` exactly from the matching handoff item. Write a
   short, incident-specific explanation in `O que sustenta`.
-- Do not treat an alert firing, temporal proximity or matching text as proof of
-  cause by itself.
+- Do not treat an alert firing, temporal proximity, matching text or span order
+  as proof of cause by itself. Trace evidence may prove the observed service
+  path and status while the causal attribution remains a hypothesis.
 - Observed impact must come from selected evidence. Unknown impact must be
   stated explicitly and supported by the evidence that establishes the limit.
 

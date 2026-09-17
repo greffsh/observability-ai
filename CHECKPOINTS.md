@@ -72,7 +72,7 @@ Esses itens podem ser promovidos ao escopo após a validação do núcleo da PoC
 | RF-03 | Identificar ambiente, serviço e alerta sem misturar incidentes distintos.                        | Obrigatório | PENDENTE |
 | RF-04 | Correlacionar e deduplicar ocorrências repetidas do mesmo incidente.                             | Obrigatório | PENDENTE |
 | RF-05 | Tratar pelo menos os estados de alerta ativo e resolvido.                                        | Obrigatório | PENDENTE |
-| RF-06 | Buscar contexto técnico relacionado ao alerta, inicialmente em logs e métricas.                  | Obrigatório | PENDENTE |
+| RF-06 | Buscar contexto técnico relacionado ao alerta em logs, métricas e traces.                        | Obrigatório | PENDENTE |
 | RF-07 | Preservar referência consultável para cada evidência usada na análise.                           | Obrigatório | PENDENTE |
 | RF-08 | Produzir resumo, impacto, causa provável, alternativas, confiança e ações sugeridas.             | Obrigatório | PENDENTE |
 | RF-09 | Declarar contexto insuficiente quando não houver evidência para uma conclusão responsável.       | Obrigatório | PENDENTE |
@@ -129,7 +129,7 @@ O formato definitivo e os nomes dos campos ainda serão decididos, mas essas inf
 | DT-01 | Papel do n8n                                | Removido do escopo inicial                               | CP-04                     | DECIDIDO |
 | DT-02 | Linguagem do Analyzer                       | TypeScript                                               | CP-04                     | DECIDIDO |
 | DT-03 | Banco da PoC                                | PostgreSQL                                               | CP-05                     | DECIDIDO |
-| DT-04 | Fontes de observabilidade locais            | Logs + métricas; traces adiados                          | CP-03                     | DECIDIDO |
+| DT-04 | Fontes de observabilidade locais            | Logs + métricas + traces distribuídos                    | CP-03                     | DECIDIDO |
 | DT-05 | Agente e modelo de IA                       | Escolhidos pelo operador no momento da análise           | CP-09                     | DECIDIDO |
 | DT-06 | Estratégia de acesso ao modelo              | Execução manual por skill; sem cliente de IA no Analyzer | CP-09                     | DECIDIDO |
 | DT-07 | Canal inicial de notificação                | Webhook local enviado diretamente pelo Analyzer          | CP-11                     | DECIDIDO |
@@ -149,6 +149,7 @@ O formato definitivo e os nomes dos campos ainda serão decididos, mas essas inf
 | Webhook Grafana → Analyzer | Não                                           | Segredo compartilhado para autenticar o webhook                    | Deve ser diferente das credenciais administrativas do Grafana.            |
 | Prometheus                 | Não                                           | Nenhum no ambiente local isolado                                   | Acesso restrito à rede interna do Compose.                                |
 | Loki                       | Não                                           | Nenhum nativo na configuração local proposta                       | Não expor publicamente; Loki não fornece camada de autenticação embutida. |
+| Tempo                      | Não                                           | Nenhum nativo na configuração local proposta                       | Armazena traces da PoC por 24 horas; não expor publicamente.              |
 | Grafana Alloy              | Não                                           | Nenhum                                                             | Permissões de coleta devem ser limitadas às fontes necessárias.           |
 | PostgreSQL                 | Não                                           | Usuário e senha próprios do Analyzer                               | Segredos locais gerados para a PoC e não versionados.                     |
 | Analyzer                   | Não                                           | Segredos internos para chamadas recebidas e fechamento operacional | Não recebe credencial de repositório nem de provedor de IA.               |
@@ -223,11 +224,11 @@ Os nomes dos segredos serão definidos no CP-02 e documentados em `.env.example`
 checkout-api ── métricas ──> Prometheus ──┐
      │                                     │
      └──── logs ──> Alloy ──> Loki ───────┼──> Grafana Alerting
-                                           │          │ webhook
+serviços ─── traces ─> Alloy ─> Tempo ─────┤          │ webhook
                                            │          v
                                            └────> Analyzer
                                            │
-                                           ├── consulta Prometheus e Loki
+                                           ├── consulta Prometheus, Loki e Tempo
                                            ├── persiste no PostgreSQL
                                            └── expõe API operacional
                                                       │
@@ -244,13 +245,14 @@ checkout-api ── métricas ──> Prometheus ──┐
 - Grafana OSS com configuração provisionada em arquivos;
 - Prometheus para métricas;
 - Loki para logs;
-- Grafana Alloy para coleta e encaminhamento dos logs;
+- Tempo para traces distribuídos;
+- Grafana Alloy para coleta e encaminhamento de logs, métricas OTLP e traces;
 - Analyzer como aplicação independente, sem acesso ao repositório nem cliente de IA neste corte;
 - PostgreSQL como persistência e fila durável inicial do Analyzer;
 - aplicação genérica `checkout-api` com falha controlada;
 - interface web mínima para listar incidentes e exportar o handoff;
 - receptor local de webhook como destino inicial, sem integração externa;
-- sem Redis, fila dedicada, Tempo, Hub ou canal corporativo neste primeiro corte.
+- sem Redis, fila dedicada, Hub ou canal corporativo neste primeiro corte; Tempo foi promovido posteriormente pela DEC-024.
 
 **Linguagem aprovada para o Analyzer:** TypeScript.
 
@@ -285,11 +287,12 @@ checkout-api ── métricas ──> Prometheus ──┐
 - `compose.yaml` com Analyzer, PostgreSQL, Prometheus, Loki, Alloy e Grafana, todos com health checks;
 - `.env.example` e `.gitignore` sem valores secretos reais;
 - `README.md` com procedimentos de configuração, início, verificação e encerramento;
-- fontes Prometheus e Loki provisionadas no Grafana por `infra/grafana/provisioning/datasources/datasources.yml`;
+- fontes Prometheus, Loki e Tempo provisionadas no Grafana por `infra/grafana/provisioning/datasources/datasources.yml`;
 - configurações versionadas em `infra/prometheus`, `infra/loki` e `infra/alloy`;
 - Analyzer TypeScript/Effect construído em container não privilegiado e respondendo `GET /health`;
 - `docker compose config --quiet`, `pnpm typecheck` e `pnpm test` executados com sucesso;
-- seis containers confirmados saudáveis após `docker compose restart` em 2026-08-27.
+- seis containers confirmados saudáveis após `docker compose restart` em 2026-08-27;
+- após a DEC-024, nove serviços confirmados saudáveis e datasource Tempo com status `OK` em 2026-09-16.
 
 ---
 
@@ -312,7 +315,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 - [x] Os sinais aparecem na fonte escolhida e podem ser consultados no Grafana.
 - [x] Cada sinal contém dados suficientes para identificar serviço, ambiente e período.
 
-**Decisão técnica:** produzir logs e métricas no primeiro corte; traces ficam adiados até existir uma hipótese que justifique sua complexidade.
+**Decisão técnica original:** produzir logs e métricas no primeiro corte. A DEC-024 promoveu traces distribuídos após a integração do Connect demonstrar a necessidade de localizar falhas através do gateway e dos micros.
 
 #### CP-03A — Aplicação e falha controlável
 
@@ -674,12 +677,12 @@ checkout-api ── métricas ──> Prometheus ──┐
 
 **Critérios de aceite:**
 
-- [x] O pacote contém o alerta e contexto de logs e métricas, se disponíveis.
+- [x] O pacote contém o alerta e contexto de logs, métricas e traces, se disponíveis.
 - [x] Cada evidência informa origem, intervalo e referência consultável.
 - [x] Uma fonte indisponível é registrada como limitação sem invalidar todo o pacote.
 - [x] Conteúdo é sanitizado antes de ser entregue a um consumidor externo.
 
-**Evidências:** módulo `services/analyzer/src/evidence`; endpoint autenticado `POST /v1/incidents/:incidentId/evidence`; adapters limitados para Prometheus e Loki; pesquisa `docs/research/cp07-evidence-source-apis.md`; testes e typecheck aprovados.
+**Evidências:** módulo `services/analyzer/src/evidence`; adapters limitados para Prometheus, Loki e Tempo; pesquisa `docs/research/cp07-evidence-source-apis.md`; testes e typecheck aprovados. A fonte Tempo foi adicionada posteriormente pela DEC-024 e validada em um handoff real do `connect-api`.
 
 **Revisão de escopo em 2026-09-02:** a integração direta com repositório foi removida. Código não é uma fonte de evidência do Analyzer; no CP-09, o operador fornecerá separadamente um checkout local ao agente de RCA.
 
@@ -752,7 +755,7 @@ checkout-api ── métricas ──> Prometheus ──┐
 1. `CONCLUÍDO` — melhorar a seleção limitada de logs, priorizando erros e o contexto temporal relevante.
 2. `CONCLUÍDO` — implementar a exportação compacta do contexto do incidente e a skill versionada de RCA.
 3. `PENDENTE` — gerar e avaliar o primeiro RCA assistido usando um incidente controlado do Connect e seu checkout local.
-4. Adicionar traces em uma iteração posterior e comparar objetivamente a qualidade do RCA com e sem essa fonte.
+4. `CONCLUÍDO` — adicionar traces distribuídos como fonte limitada; a comparação objetiva do RCA com e sem traces continua junto à execução pendente do item 3.
 
 **Decisões:** DT-05, DT-06 e DT-13 concluídas pela DEC-015.
 
@@ -765,7 +768,9 @@ sanitizado com incidente, ocorrências, severidade e o mesmo pacote de evidênci
 usado na classificação. O checkout permanece explicitamente fora do pacote. Em
 2026-09-15, a resposta final da skill passou a incluir um resumo operacional de
 duas a quatro frases com impacto, causa provável e sustentação, sem extrapolar
-o diagnóstico validado.
+o diagnóstico validado. Em 2026-09-16, Tempo foi integrado ao Alloy, Grafana e
+Analyzer; a seleção TraceQL passou a exigir span de servidor, limitar candidatos
+e spans e exportar somente atributos permitidos.
 
 **Evidências:** módulos `services/analyzer/src/rca-handoff` e
 `services/analyzer/src/evidence/loki-source.ts`; contrato operacional em
@@ -776,7 +781,13 @@ evidência e severidade `alta`; a seleção examinou 200 logs, reteve 50 e decla
 o truncamento. A skill `.agents/skills/incident-rca` e seu contrato de saída
 Markdown foram
 validados estruturalmente, incluindo a rejeição de severidade divergente e de
-citações inexistentes. A execução avaliada do primeiro RCA ainda está pendente.
+citações inexistentes. A integração Tempo foi validada no incidente
+`62b5e342-b81b-4319-bda3-7baf5b5ee8be`: o handoff retornou dois traces HTTP do
+`connect-api`, com 12 spans cada e sem truncamento após excluir spans de startup.
+No monorepo de micros, o trace `41920b6fb4d7194f1f4f77d45e72c7eb`
+atravessou `connect-gateway → domain-api`; a métrica do gateway apareceu no
+Prometheus e um erro controlado exportou ao Loki apenas corpo fixo e campos de
+correlação permitidos. A execução avaliada do primeiro RCA ainda está pendente.
 
 #### CP-09A — Disponibilizar interface mínima do operador
 
@@ -1015,7 +1026,7 @@ Usar uma entrada por decisão tomada:
 ### DEC-004 — Sinais iniciais de observabilidade
 
 - **Data:** 2026-08-27
-- **Estado:** aceita
+- **Estado:** substituída pela DEC-024
 - **Contexto:** a PoC precisa correlacionar falhas reproduzíveis com evidências, mantendo o primeiro ciclo pequeno e auditável.
 - **Decisão:** instrumentar inicialmente logs e métricas da `checkout-api`; traces ficam fora deste corte.
 - **Alternativas consideradas:** somente logs; logs, métricas e traces desde o início.
@@ -1212,6 +1223,16 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** a operação básica ganha uma interface pequena sem alterar contratos do Analyzer; a autenticação continua adequada apenas à PoC local e deverá ser substituída por sessão ou BFF antes de homologação; o Hub completo permanece fora do escopo.
 - **Checkpoints afetados:** CP-01, CP-09 e CP-13.
 
+### DEC-024 — Traces distribuídos como evidência limitada
+
+- **Data:** 2026-09-16
+- **Estado:** aceita; substitui o adiamento de traces da DEC-004
+- **Contexto:** métricas do gateway comprovam impacto externo, mas logs isolados não localizam com segurança em qual chamada entre gateway e micros a falha surgiu. A integração do Connect também já possuía SDK OpenTelemetry, tornando possível validar a lacuna com propagação padrão.
+- **Decisão:** manter o gateway como sinal principal de impacto e usar traces W3C para diagnóstico distribuído. O Alloy recebe OTLP e encaminha traces ao Tempo; Grafana e Analyzer consultam Tempo. O Analyzer exige span de servidor do serviço do incidente, examina no máximo dez candidatos, devolve até três traces com cem spans cada, limita respostas a 1 MiB e exporta somente atributos permitidos. `traceparent`/`tracestate` são a relação oficial; headers próprios ficam apenas como fallback de compatibilidade.
+- **Alternativas consideradas:** continuar somente com logs e métricas; correlacionar exclusivamente por `requestId`; usar headers próprios como protocolo de tracing; enviar traces completos sem seleção ao agente.
+- **Consequências:** o handoff pode mostrar o caminho entre serviços sem transformar ordem temporal em prova de causa; Tempo entra na stack local e no health check; SDKs precisam iniciar antes dos frameworks; filesystem tracing fica desabilitado para evitar ruído; a skill trata nomes e atributos de spans como dados não confiáveis. A comparação da qualidade do RCA com e sem traces permanece parte da avaliação manual do CP-09.
+- **Checkpoints afetados:** CP-01, CP-02, CP-03, CP-07 e CP-09.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                                                                                                                                          | Responsável |
@@ -1256,3 +1277,4 @@ Usar uma entrada por decisão tomada:
 | 2026-09-15 | Endpoint local autenticado e explicitamente confirmado para limpar dados operacionais sem remover schema ou migrations.                                                           | Codex       |
 | 2026-09-15 | Resposta final da skill de RCA ampliada com resumo operacional contendo impacto, causa provável e sustentação nas evidências validadas.                                            | Codex       |
 | 2026-09-16 | Interface operacional mínima implementada para listar, filtrar, gerar/copiar handoffs e fechar incidentes aguardando confirmação; validação manual permanece pendente.             | Codex       |
+| 2026-09-16 | Traces distribuídos promovidos ao escopo: Tempo integrado, evidência limitada no Analyzer e propagação W3C aplicada ao Connect e ao monorepo de micros.                                | Codex       |

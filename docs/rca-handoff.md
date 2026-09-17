@@ -76,7 +76,8 @@ o Analyzer ainda não o persiste como artefato separado.
 ```
 
 Campos internos de correlação e fingerprints não são exportados nas
-ocorrências. Strings e dados de evidência passam novamente pela sanitização no
+ocorrências. Respostas de Prometheus, Loki e Tempo são interrompidas ao exceder
+1 MiB. Strings e dados de evidência passam novamente pela sanitização no
 limite do exportador. O conteúdo de alertas e logs permanece marcado como não
 confiável e nunca deve ser interpretado como instrução para o agente.
 
@@ -88,9 +89,25 @@ equivalentes) e depois a proximidade com o horário de detecção do incidente. 
 ordem cronológica é restaurada no resultado para preservar a leitura temporal.
 
 O item de evidência registra a estratégia e as quantidades examinada e
-retornada. Se entradas forem omitidas ou o limite de leitura for atingido, o
+retornada. O envelope bruto do Loki é descartado; cada entrada exporta somente
+timestamp, labels canônicas e campos estruturados da allowlist. Se entradas
+forem omitidas ou o limite de leitura for atingido, o
 pacote inclui uma limitação `logs:truncated`; a referência consultável preserva
 a consulta completa para investigação humana.
+
+## Seleção de traces
+
+O adapter consulta o Tempo com uma TraceQL restrita ao serviço do incidente e a
+spans de servidor. Examina no máximo dez candidatos, prioriza traces com status
+de erro e proximidade da detecção, devolve no máximo três traces e limita cada
+um a cem spans. Respostas HTTP também são limitadas a 1 MiB.
+
+Somente identidade de serviço, nomes e relações dos spans, status, duração e
+uma allowlist curta de atributos HTTP/RPC/banco/rede são exportados. URLs
+completas, corpos, queries e atributos desconhecidos são descartados. O pacote
+registra `traces:partial` quando algum trace não pode ser lido e
+`traces:truncated` quando candidatos ou spans são omitidos; cada item preserva
+uma referência consultável ao trace integral no Tempo.
 
 ## Entrada da skill e checkout local
 

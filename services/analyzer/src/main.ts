@@ -6,6 +6,7 @@ import { migrateDatabase } from "./database/migrate.js"
 import { makeEvidenceCollector } from "./evidence/evidence-collector.js"
 import { makeLokiEvidenceSource } from "./evidence/loki-source.js"
 import { makePrometheusEvidenceSource } from "./evidence/prometheus-source.js"
+import { makeTempoEvidenceSource } from "./evidence/tempo-source.js"
 import { makeApplicationLogging } from "./logging.js"
 import { makePostgresEventStore } from "./persistence/postgres-event-store.js"
 import { makeRcaHandoffExporter } from "./rca-handoff/handoff-exporter.js"
@@ -37,6 +38,12 @@ const configuration = Config.all({
   ),
   lokiPublicUrl: Config.string("LOKI_PUBLIC_URL").pipe(
     Config.withDefault("http://localhost:3100")
+  ),
+  tempoUrl: Config.string("TEMPO_URL").pipe(
+    Config.withDefault("http://tempo:3200")
+  ),
+  tempoPublicUrl: Config.string("TEMPO_PUBLIC_URL").pipe(
+    Config.withDefault("http://localhost:3200")
   ),
   serviceCatalogFile: Config.string("SERVICE_CATALOG_FILE").pipe(
     Config.withDefault("/etc/analyzer/service-catalog.json")
@@ -84,6 +91,10 @@ const main = Effect.gen(function* () {
       makeLokiEvidenceSource({
         baseUrl: config.lokiUrl,
         publicBaseUrl: config.lokiPublicUrl
+      }),
+      makeTempoEvidenceSource({
+        baseUrl: config.tempoUrl,
+        publicBaseUrl: config.tempoPublicUrl
       })
     ]
   })

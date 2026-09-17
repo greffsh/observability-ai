@@ -5,6 +5,7 @@ import type { EvidenceCollectionContext } from "../src/evidence/contracts.ts"
 import { defaultEvidencePolicy } from "../src/evidence/evidence-collector.ts"
 import { makeLokiEvidenceSource } from "../src/evidence/loki-source.ts"
 import { makePrometheusEvidenceSource } from "../src/evidence/prometheus-source.ts"
+import { makeTempoEvidenceSource } from "../src/evidence/tempo-source.ts"
 import { checkoutServiceCatalog } from "./fixtures/service-catalog.ts"
 
 const incident: Incident = {
@@ -161,16 +162,93 @@ describe("evidence source adapters", () => {
           returnedEntries: 2
         },
         entries: [
-          { line: "first" },
-          { line: "second" }
+          { timestamp: "1788170800000000000", fields: null },
+          { timestamp: "1788170900000000000", fields: null }
         ]
       }
+    })
+    expect(result.evidence[0]?.data).not.toMatchObject({
+      entries: [{ line: expect.anything() }]
     })
     expect(result.limitations).toEqual([{
       source: "logs",
       code: "truncated",
       description: "Selected 2 of 3 scanned log entries; errors and incident proximity were prioritized"
     }])
+  })
+
+  it("collects bounded Tempo traces and preserves service paths", async () => {
+    const traceStart = "1788170400000000000"
+    const fetchMock = vi.fn(async (input: URL | RequestInfo) => {
+      const url = input instanceof URL ? input : new URL(String(input))
+      if (url.pathname === "/api/search") {
+        return new Response(JSON.stringify({
+          traces: [{
+            traceID: "trace-1",
+            rootServiceName: "checkout-api",
+            rootTraceName: "GET /checkout",
+            startTimeUnixNano: traceStart,
+            durationMs: 25
+          }]
+        }), { headers: { "content-type": "application/json" } })
+      }
+
+      return new Response(JSON.stringify({
+        batches: [{
+          resource: {
+            attributes: [{ key: "service.name", value: { stringValue: "checkout-api" } }]
+          },
+          scopeSpans: [{
+            scope: { name: "http" },
+            spans: [{
+              spanId: "span-1",
+              name: "GET /checkout",
+              startTimeUnixNano: traceStart,
+              endTimeUnixNano: "1788170400025000000",
+              attributes: [
+                { key: "http.request.method", value: { stringValue: "GET" } },
+                { key: "http.route", value: { stringValue: "/checkout" } },
+                { key: "url.full", value: { stringValue: "http://secret/path?token=x" } }
+              ],
+              status: { code: "STATUS_CODE_ERROR" }
+            }]
+          }]
+        }]
+      }), { headers: { "content-type": "application/json" } })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const source = makeTempoEvidenceSource({
+      baseUrl: "http://tempo:3200",
+      publicBaseUrl: "http://localhost:3200"
+    })
+
+    const result = await Effect.runPromise(source.collect(context))
+    const searchUrl = fetchMock.mock.calls[0]?.[0] as URL
+
+    expect(searchUrl.pathname).toBe("/api/search")
+    expect(searchUrl.searchParams.get("q")).toBe(
+      "{ resource.service.name = \"checkout-api\" && kind = server }"
+    )
+    expect(result.evidence[0]).toMatchObject({
+      id: "traces-1",
+      source: "traces",
+      reference: "http://localhost:3200/api/traces/trace-1",
+      data: {
+        traceId: "trace-1",
+        hasError: true,
+        spans: [{
+          service: "checkout-api",
+          name: "GET /checkout",
+          attributes: {
+            "http.request.method": "GET",
+            "http.route": "/checkout"
+          }
+        }]
+      }
+    })
+    expect(result.evidence[0]?.data).not.toMatchObject({
+      spans: [{ attributes: { "url.full": expect.anything() } }]
+    })
   })
 
   it("selects errors first and then logs closest to incident detection", async () => {
@@ -183,20 +261,33 @@ describe("evidence source adapters", () => {
         result: [
           {
             stream: { service: "checkout-api", environment: "local", level: "error" },
-            values: [[nanoseconds("2026-08-31T09:56:00Z"), "older-error"]]
+            values: [[
+              nanoseconds("2026-08-31T09:56:00Z"),
+              JSON.stringify({ event: "older-error" })
+            ]]
           },
           {
             stream: { service: "checkout-api", environment: "local", level: "info" },
             values: [
-              [nanoseconds("2026-08-31T10:09:00Z"), "far-info"],
-              [nanoseconds("2026-08-31T10:00:01Z"), "nearest-info"]
+              [
+                nanoseconds("2026-08-31T10:09:00Z"),
+                JSON.stringify({ event: "far-info" })
+              ],
+              [
+                nanoseconds("2026-08-31T10:00:01Z"),
+                JSON.stringify({ event: "nearest-info" })
+              ]
             ]
           },
           {
             stream: { service: "checkout-api", environment: "local" },
             values: [[
               nanoseconds("2026-08-31T10:00:30Z"),
-              JSON.stringify({ severityText: "FATAL", message: "nearby-error" })
+              JSON.stringify({
+                event: "nearby-error",
+                severityText: "FATAL",
+                message: "ignored raw message"
+              })
             ]]
           }
         ]
@@ -216,9 +307,9 @@ describe("evidence source adapters", () => {
     expect(result.evidence[0]).toMatchObject({
       data: {
         entries: [
-          { line: "older-error" },
-          { line: "nearest-info" },
-          { line: expect.stringContaining("nearby-error") }
+          { fields: { event: "older-error" } },
+          { fields: { event: "nearest-info" } },
+          { fields: { event: "nearby-error" } }
         ]
       }
     })

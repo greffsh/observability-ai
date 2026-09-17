@@ -7,7 +7,7 @@ para uma implantação futura ficam em [HOMOLOGACAO.md](HOMOLOGACAO.md).
 ## Pré-requisitos
 
 - Docker com Docker Compose;
-- portas locais 3000, 3100, 4317, 4318, 8080, 8081, 8082, 9090 e 12345 disponíveis.
+- portas locais 3000, 3100, 3200, 4317, 4318, 8080, 8081, 8082, 9090 e 12345 disponíveis.
 
 Node.js e pnpm são necessários apenas para desenvolver as aplicações
 TypeScript fora dos containers.
@@ -38,6 +38,7 @@ curl --fail http://localhost:8081/health
 curl --fail http://localhost:8082/healthz
 curl --fail http://localhost:9090/-/ready
 curl --fail http://localhost:3100/ready
+curl --fail http://localhost:3200/ready
 curl --fail http://localhost:12345/-/ready
 curl --fail http://localhost:3000/api/health
 ```
@@ -52,6 +53,7 @@ Interfaces locais:
 | Grafana | <http://localhost:3000> |
 | Prometheus | <http://localhost:9090> |
 | Loki | <http://localhost:3100/ready> |
+| Tempo | <http://localhost:3200/ready> |
 | Alloy | <http://localhost:12345> |
 
 O usuário e a senha do Grafana são definidos em `.env`.
@@ -145,6 +147,22 @@ Métricas disponíveis:
 - `checkout_availability`: `1` quando saudável e `0` durante a falha controlada.
 
 O endpoint bruto pode ser auditado em <http://localhost:8081/metrics>.
+
+## Traces distribuídos
+
+O Alloy recebe traces OTLP e os encaminha ao Tempo. O datasource **Tempo** é
+provisionado no Grafana; em **Explore**, uma consulta TraceQL por serviço pode
+ser executada com:
+
+```traceql
+{ resource.service.name = "connect-api" && kind = server }
+```
+
+O Analyzer usa a mesma restrição a spans de servidor para evitar traces de
+startup e seleciona no máximo três traces, com até cem spans sanitizados em
+cada um. A referência integral do trace permanece no item de evidência. A
+propagação entre serviços deve usar W3C `traceparent`/`tracestate`; headers
+próprios de correlação não substituem esse contexto.
 
 ## Encerrar
 
@@ -272,7 +290,7 @@ sessão iniciada neste repositório.
 Serviços adicionais são cadastrados em
 `infra/analyzer/service-catalog.json`. O perfil liga métricas próprias a sinais
 de impacto normalizados sem alterar as regras de severidade. A stack também
-recebe logs e métricas OpenTelemetry por OTLP; consulte o
+recebe logs, métricas e traces OpenTelemetry por OTLP; consulte o
 [guia de onboarding](docs/service-onboarding.md) para identidade, configuração
 e limitações de segurança. O diagnóstico, os sinais e o procedimento reproduzível
 da integração local do Connect estão em

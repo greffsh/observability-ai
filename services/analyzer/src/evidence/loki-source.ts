@@ -38,6 +38,10 @@ const allowedStructuredFields = new Set([
   "severity",
   "context",
   "requestId",
+  "traceId",
+  "spanId",
+  "trace_id",
+  "span_id",
   "http.request.method",
   "http.route",
   "http.response.status_code",
@@ -148,7 +152,8 @@ export const makeLokiEvidenceSource = (
     requestUrl.searchParams.set("limit", String(context.policy.maxLogScanEntries))
     const response = yield* fetchJson<LokiResponse>(requestUrl, {
       source: "logs",
-      timeoutMs: context.policy.sourceTimeoutMs
+      timeoutMs: context.policy.sourceTimeoutMs,
+      maxBytes: context.policy.maxSourceBytes
     })
 
     if (response.status !== "success" || response.data?.resultType !== "streams") {
@@ -179,6 +184,11 @@ export const makeLokiEvidenceSource = (
     )
     const reference = new URL("/loki/api/v1/query_range", options.publicBaseUrl)
     reference.search = requestUrl.search
+    const sanitizedEntries = entries.map(({ timestamp, fields, labels }) => ({
+      timestamp,
+      fields,
+      labels
+    }))
     const evidence: EvidenceItem = {
       id: "logs-1",
       source: "logs",
@@ -193,7 +203,7 @@ export const makeLokiEvidenceSource = (
           scannedEntries: rawEntries.length,
           returnedEntries: entries.length
         },
-        entries
+        entries: sanitizedEntries
       }
     }
 
