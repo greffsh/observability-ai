@@ -70,8 +70,10 @@ JSON para o clipboard. Incidentes aguardando confirmação também podem ser
 encerrados pela interface, com motivo auditável e nota opcional.
 
 Incidentes abertos não podem ser encerrados enquanto houver ocorrências ativas.
-Incidentes mesclados não aparecem na listagem operacional padrão e incidentes
-encerrados não oferecem ações. O navegador precisa permitir acesso
+Incidentes mesclados não aparecem na listagem operacional padrão. Incidentes
+encerrados oferecem somente a exclusão operacional: após confirmação, somem das
+listagens, enquanto eventos, ocorrências e dados de encerramento permanecem
+preservados para auditoria. O navegador precisa permitir acesso
 ao clipboard; `localhost` é considerado um contexto seguro pelos navegadores
 modernos.
 
@@ -278,8 +280,21 @@ curl --request PUT \
 
 O fechamento é idempotente e auditável. Incidentes com ocorrências abertas
 retornam `409`; a credencial do webhook do Grafana não autoriza leitura,
-handoff ou encerramento. Uma ocorrência posterior a um incidente encerrado
-inicia outro incidente.
+handoff, encerramento ou exclusão. Uma ocorrência posterior a um incidente
+encerrado inicia outro incidente.
+
+Um operador pode remover um incidente encerrado das visões operacionais sem
+apagar sua trilha de auditoria:
+
+```fish
+set incident_id UUID-DO-INCIDENTE
+curl --fail --request DELETE \
+  --header "Authorization: Bearer change-me-operator" \
+  "http://localhost:8080/v1/incidents/$incident_id"
+```
+
+A operação retorna `204`, é idempotente e aceita somente incidentes `closed`.
+Outros estados retornam `409`.
 
 O Analyzer não acessa repositórios e não chama um modelo de IA. O operador
 fornece à skill um arquivo de handoff, o JSON completo ou um `incident_id` e

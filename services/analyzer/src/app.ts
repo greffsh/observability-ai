@@ -329,6 +329,48 @@ export const buildApp = (options: AppOptions): FastifyInstance => {
     return reply.code(200).send({ ...result.right.value, occurrences: occurrences.right })
   })
 
+  app.delete<{ Params: { incidentId: string } }>(
+    "/v1/incidents/:incidentId",
+    { onRequest: authenticateOperator },
+    async (request, reply) => {
+      const result = await runEffect(Effect.either(options.eventStore.deleteClosedIncident({
+        incidentId: request.params.incidentId,
+        deletedAt: now(),
+        deletedBy: options.operatorId.trim()
+      })))
+
+      if (Either.isLeft(result)) {
+        return reply.code(503).send({ error: "persistence_unavailable" })
+      }
+
+      const outcome = result.right.outcome
+      switch (outcome) {
+        case "deleted":
+          await runEffect(
+            Effect.logInfo("Incident removed from operational views").pipe(
+              Effect.annotateLogs({
+                event: "incident_operationally_deleted",
+                incident_id: request.params.incidentId,
+                operator_id: options.operatorId.trim()
+              })
+            )
+          )
+          return reply.code(204).send()
+        case "already_deleted":
+          return reply.code(204).send()
+        case "not_found":
+          return reply.code(404).send({ error: "incident_not_found" })
+        case "not_deletable":
+          return reply.code(409).send({
+            error: "incident_not_deletable",
+            status: result.right.status
+          })
+        default:
+          return assertUnreachable(outcome)
+      }
+    }
+  )
+
   app.post<{ Params: { incidentId: string } }>(
     "/v1/incidents/:incidentId/rca-handoff",
     { onRequest: authenticateOperator },

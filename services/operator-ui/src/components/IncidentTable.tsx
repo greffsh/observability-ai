@@ -12,18 +12,21 @@ export const IncidentTable = ({
   loading,
   generatingIncidentId,
   closingIncidentId,
+  deletingIncidentId,
   copiedHandoffIncidentId,
   copiedIncidentId,
   handoffError,
   onSelect,
   onCopyId,
   onHandoff,
-  onCloseIncident
+  onCloseIncident,
+  onDeleteIncident
 }: {
   readonly incidents: ReadonlyArray<IncidentSummary>
   readonly loading: boolean
   readonly generatingIncidentId: string | null
   readonly closingIncidentId: string | null
+  readonly deletingIncidentId: string | null
   readonly copiedHandoffIncidentId: string | null
   readonly copiedIncidentId: string | null
   readonly handoffError: HandoffError | null
@@ -31,6 +34,7 @@ export const IncidentTable = ({
   readonly onCopyId: (incidentId: string) => void
   readonly onHandoff: (incident: IncidentBase) => void
   readonly onCloseIncident: (incident: IncidentBase) => void
+  readonly onDeleteIncident: (incident: IncidentBase) => void
 }) => (
   <section className="incident-panel" aria-busy={loading}>
     <div className="panel-heading">
@@ -107,9 +111,11 @@ export const IncidentTable = ({
                     disabled={
                       generatingIncidentId === incident.id || closingIncidentId === incident.id
                     }
+                    deleting={deletingIncidentId === incident.id}
                     error={handoffError?.incidentId === incident.id ? handoffError.message : null}
                     onHandoff={onHandoff}
                     onCloseIncident={onCloseIncident}
+                    onDeleteIncident={onDeleteIncident}
                   />
                 </td>
               </tr>

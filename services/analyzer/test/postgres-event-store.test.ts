@@ -52,8 +52,11 @@ integration("PostgreSQL incident correlation", () => {
     await runtime?.dispose()
   })
 
-  it("bootstraps an empty database from one consolidated baseline", () => {
-    expect(appliedMigrations).toEqual([[1, "initial_schema"]])
+  it("bootstraps an empty database and applies incremental migrations", () => {
+    expect(appliedMigrations).toEqual([
+      [1, "initial_schema"],
+      [2, "incident_operational_deletion"]
+    ])
   })
 
   it("clears all operational data without removing the schema", async () => {
@@ -68,6 +71,42 @@ integration("PostgreSQL incident correlation", () => {
     expect(await runtime.runPromise(store.record([firing]))).toMatchObject({
       insertedEventIds: [firing.eventId]
     })
+  })
+
+  it("hides a deleted closed incident while preserving its audit events", async () => {
+    const firing = event()
+    const resolved = event({
+      eventId: "availability:resolved:2026-08-28T10:00:00.000Z",
+      state: "resolved",
+      endedAt: new Date("2026-08-28T10:05:00Z")
+    })
+    await runtime.runPromise(store.record([firing, resolved]))
+    const incident = (await runtime.runPromise(store.listIncidents({})))[0]!
+    await runtime.runPromise(store.closeIncident({
+      incidentId: incident.id,
+      closedAt: new Date("2026-08-28T10:06:00Z"),
+      closedBy: "test-operator",
+      reason: "recovery_confirmed",
+      note: null
+    }))
+
+    const deleted = await runtime.runPromise(store.deleteClosedIncident({
+      incidentId: incident.id,
+      deletedAt: new Date("2026-08-28T10:07:00Z"),
+      deletedBy: "test-operator"
+    }))
+
+    expect(deleted).toEqual({ outcome: "deleted" })
+    expect(await runtime.runPromise(store.listIncidents({ status: "closed" }))).toEqual([])
+    expect(Option.isNone(await runtime.runPromise(store.findIncidentById(incident.id))))
+      .toBe(true)
+    expect(Option.isSome(await runtime.runPromise(store.findByEventId(firing.eventId))))
+      .toBe(true)
+    expect(await runtime.runPromise(store.deleteClosedIncident({
+      incidentId: incident.id,
+      deletedAt: new Date("2026-08-28T10:08:00Z"),
+      deletedBy: "test-operator"
+    }))).toEqual({ outcome: "already_deleted" })
   })
 
   it("keeps compatible late alerts in an incident with an open occurrence", async () => {

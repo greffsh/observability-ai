@@ -48,6 +48,10 @@ _Avoid_: Incidente resolvido, sistema recuperado, causa corrigida
 Incidente anteriormente aguardando confirmação cujo acompanhamento foi finalizado explicitamente por uma pessoa ou política operacional. Seu encerramento é terminal, não afirma que a causa raiz foi descoberta e não é revertido por eventos atrasados; uma nova falha inicia outro incidente.
 _Avoid_: Alerta resolvido, sinais encerrados, RCA concluído
 
+**Exclusão operacional**:
+Ação explícita de operador que retira um incidente encerrado das consultas e interfaces operacionais sem apagar suas ocorrências, eventos ou dados de encerramento. É idempotente e não reabre nem altera a conclusão registrada.
+_Avoid_: Exclusão física, limpeza do banco, reabertura
+
 **Contexto do incidente**:
 Pacote sanitizado com o incidente, suas ocorrências, evidências observáveis e classificação determinística. Não contém código, credenciais de repositório nem uma conclusão de causa raiz.
 _Avoid_: RCA, snapshot do repositório, prompt

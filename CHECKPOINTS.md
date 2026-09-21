@@ -1252,6 +1252,16 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** o RCA distingue checkout exato, divergência e coexistência de revisões sem dar acesso de repositório ao Analyzer; branch e tag permanecem informativas; uma única revisão observada já presente no repositório local pode ser lida diretamente do banco de objetos Git, sem trocar o working tree, e passa a ser a base validável das citações; ambientes precisam injetar os atributos OTEL para obter correspondência; a API do GitLab pode complementar auditoria futura, mas não substitui a observação por instância; o rollout em CI/CD permanece separado da prova local.
 - **Checkpoints afetados:** CP-07 e CP-09.
 
+### DEC-026 — Exclusão operacional de incidentes encerrados
+
+- **Data:** 2026-09-21
+- **Estado:** aceita
+- **Contexto:** a lista de encerrados cresce durante ensaios e operação, mas apagar fisicamente um incidente destruiria eventos, ocorrências e metadados de encerramento necessários para auditoria.
+- **Decisão:** permitir que o operador exclua somente incidentes `closed` das visões operacionais. A operação é autenticada, confirmada na interface, idempotente e registra autor e instante; o banco preserva o incidente, suas relações e eventos. Incidentes em qualquer outro estado são rejeitados.
+- **Alternativas consideradas:** exclusão física em cascata; reutilizar a limpeza global do banco; esconder apenas no estado do navegador; permitir exclusão de incidentes ainda ativos.
+- **Consequências:** listagens, detalhes e handoffs deixam de encontrar o incidente após a exclusão operacional, enquanto eventos continuam consultáveis para auditoria; uma migration incremental adiciona os metadados de exclusão; a remoção não equivale a expurgo por retenção ou privacidade.
+- **Checkpoints afetados:** CP-05, CP-09 e CP-13.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                                                                                                                                          | Responsável |
@@ -1298,3 +1308,4 @@ Usar uma entrada por decisão tomada:
 | 2026-09-16 | Interface operacional mínima implementada para listar, filtrar, gerar/copiar handoffs e fechar incidentes aguardando confirmação; validação manual permanece pendente.             | Codex       |
 | 2026-09-16 | Traces distribuídos promovidos ao escopo: Tempo integrado, evidência limitada no Analyzer e propagação W3C aplicada ao Connect e ao monorepo de micros.                                | Codex       |
 | 2026-09-21 | Handoff v2 passou a preservar revisões observadas via OpenTelemetry; a skill classifica o checkout e lê diretamente o commit observado quando ele existe localmente.                      | Codex       |
+| 2026-09-21 | Incidentes encerrados ganharam exclusão operacional auditável, sem remoção física de ocorrências ou eventos.                                                                               | Codex       |

@@ -2,12 +2,14 @@ import { useEffect, useState } from "react"
 import {
   AnalyzerApiError,
   closeIncident as closeIncidentRequest,
+  deleteIncident as deleteIncidentRequest,
   exportHandoff,
   getIncident,
   listIncidents
 } from "./analyzer-api"
 import { Authentication } from "./components/Authentication"
 import { ClosureDialog } from "./components/ClosureDialog"
+import { DeletionDialog } from "./components/DeletionDialog"
 import { IncidentDrawer } from "./components/IncidentDrawer"
 import { IncidentTable, type HandoffError } from "./components/IncidentTable"
 import { StatusTabs } from "./components/StatusTabs"
@@ -70,6 +72,9 @@ export const App = () => {
   const [closureTarget, setClosureTarget] = useState<IncidentBase | null>(null)
   const [closingIncidentId, setClosingIncidentId] = useState<string | null>(null)
   const [closureError, setClosureError] = useState<string | null>(null)
+  const [deletionTarget, setDeletionTarget] = useState<IncidentBase | null>(null)
+  const [deletingIncidentId, setDeletingIncidentId] = useState<string | null>(null)
+  const [deletionError, setDeletionError] = useState<string | null>(null)
   const [operationNotice, setOperationNotice] = useState<OperationNotice | null>(null)
 
   const [detailTarget, setDetailTarget] = useState<IncidentSummary | null>(null)
@@ -83,6 +88,8 @@ export const App = () => {
     setIncidents([])
     setDetailTarget(null)
     setIncidentDetails(null)
+    setClosureTarget(null)
+    setDeletionTarget(null)
     setAuthMessage(message)
   }
 
@@ -188,6 +195,38 @@ export const App = () => {
     }
   }
 
+  const deleteIncident = async () => {
+    if (deletionTarget === null) return
+
+    const incidentId = deletionTarget.id
+    setDeletingIncidentId(incidentId)
+    setDeletionError(null)
+
+    try {
+      await deleteIncidentRequest(token, incidentId)
+      setDeletionTarget(null)
+      setIncidents((current) => current.filter((incident) => incident.id !== incidentId))
+      if (detailTarget?.id === incidentId) {
+        setDetailTarget(null)
+        setIncidentDetails(null)
+      }
+      setOperationNotice({
+        kind: "success",
+        message: "Incidente removido das listagens operacionais."
+      })
+      setRefreshVersion((value) => value + 1)
+    } catch (error: unknown) {
+      if (handleUnauthorized(error)) return
+      if (error instanceof AnalyzerApiError && error.status === 409) {
+        setDeletionError("Somente incidentes encerrados podem ser excluídos.")
+      } else {
+        setDeletionError(errorMessage(error, "Falha ao excluir o incidente."))
+      }
+    } finally {
+      setDeletingIncidentId(null)
+    }
+  }
+
   const generateAndCopyHandoff = async (incident: IncidentBase) => {
     setGeneratingIncidentId(incident.id)
     setCopiedHandoffIncidentId(null)
@@ -287,6 +326,7 @@ export const App = () => {
           loading={loading}
           generatingIncidentId={generatingIncidentId}
           closingIncidentId={closingIncidentId}
+          deletingIncidentId={deletingIncidentId}
           copiedHandoffIncidentId={copiedHandoffIncidentId}
           copiedIncidentId={copiedIncidentId}
           handoffError={handoffError}
@@ -297,6 +337,11 @@ export const App = () => {
           onCopyId={(incidentId) => void copyIncidentId(incidentId)}
           onHandoff={(incident) => void generateAndCopyHandoff(incident)}
           onCloseIncident={openClosure}
+          onDeleteIncident={(incident) => {
+            setOperationNotice(null)
+            setDeletionError(null)
+            setDeletionTarget(incident)
+          }}
         />
       </main>
 
@@ -318,6 +363,20 @@ export const App = () => {
           onCopyId={() => void copyIncidentId(detailTarget.id)}
           onHandoff={(incident) => void generateAndCopyHandoff(incident)}
           onCloseIncident={openClosure}
+        />
+      )}
+
+      {deletionTarget !== null && (
+        <DeletionDialog
+          key={deletionTarget.id}
+          incident={deletionTarget}
+          busy={deletingIncidentId === deletionTarget.id}
+          error={deletionError}
+          onCancel={() => {
+            setDeletionTarget(null)
+            setDeletionError(null)
+          }}
+          onConfirm={() => void deleteIncident()}
         />
       )}
 

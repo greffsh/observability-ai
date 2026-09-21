@@ -8,7 +8,7 @@ import type {
 } from "../domain/incident.js"
 
 export class EventStoreError extends Data.TaggedError("EventStoreError")<{
-  readonly operation: "clear" | "close" | "find" | "record"
+  readonly operation: "clear" | "close" | "delete" | "find" | "record"
   readonly cause: unknown
 }> {}
 
@@ -25,6 +25,17 @@ export type CloseIncidentResult =
   | { readonly outcome: "not_found" }
   | { readonly outcome: "not_closable"; readonly status: IncidentStatus }
   | { readonly outcome: "closure_conflict"; readonly incident: Incident }
+
+export type DeleteClosedIncidentCommand = {
+  readonly incidentId: string
+  readonly deletedAt: Date
+  readonly deletedBy: string
+}
+
+export type DeleteClosedIncidentResult =
+  | { readonly outcome: "deleted" | "already_deleted" }
+  | { readonly outcome: "not_found" }
+  | { readonly outcome: "not_deletable"; readonly status: IncidentStatus }
 
 export type RecordAlertEventsResult = {
   readonly insertedEventIds: ReadonlyArray<string>
@@ -51,6 +62,9 @@ export type StoredAlertEvent = {
 
 export type EventStore = {
   readonly clearAll: () => Effect.Effect<void, EventStoreError>
+  readonly deleteClosedIncident: (
+    command: DeleteClosedIncidentCommand
+  ) => Effect.Effect<DeleteClosedIncidentResult, EventStoreError>
   readonly record: (
     events: ReadonlyArray<AlertEvent>
   ) => Effect.Effect<RecordAlertEventsResult, EventStoreError>

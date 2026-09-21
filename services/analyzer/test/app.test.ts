@@ -376,6 +376,100 @@ describe("Analyzer HTTP API", () => {
     })
   })
 
+  it("operationally deletes a closed incident while preserving its audit events", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/grafana",
+      headers: { authorization: "Bearer test-webhook-secret" },
+      payload: firingWebhookFixture
+    })
+    await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/grafana",
+      headers: { authorization: "Bearer test-webhook-secret" },
+      payload: {
+        ...firingWebhookFixture,
+        status: "resolved",
+        alerts: [{
+          ...firingWebhookFixture.alerts[0],
+          status: "resolved",
+          endsAt: "2026-08-28T13:21:04Z"
+        }]
+      }
+    })
+    await app.inject({
+      method: "PUT",
+      url: "/v1/incidents/memory-incident-1/closure",
+      headers: { authorization: "Bearer test-operator-token" },
+      payload: { reason: "recovery_confirmed" }
+    })
+
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/v1/incidents/memory-incident-1",
+      headers: { authorization: "Bearer test-operator-token" }
+    })
+
+    expect(response.statusCode).toBe(204)
+    const incidents = await app.inject({
+      method: "GET",
+      url: "/v1/incidents?status=closed",
+      headers: { authorization: "Bearer test-operator-token" }
+    })
+    expect(incidents.json()).toEqual({ incidents: [] })
+    const deleted = await app.inject({
+      method: "GET",
+      url: "/v1/incidents/memory-incident-1",
+      headers: { authorization: "Bearer test-operator-token" }
+    })
+    expect(deleted.statusCode).toBe(404)
+    const event = await app.inject({
+      method: "GET",
+      url: "/v1/events/fixture-checkout-failure:firing:2026-08-28T13%3A21%3A00.000Z",
+      headers: { authorization: "Bearer test-operator-token" }
+    })
+    expect(event.statusCode).toBe(200)
+    expect(event.json()).toMatchObject({ incidentId: "memory-incident-1" })
+    const repeated = await app.inject({
+      method: "DELETE",
+      url: "/v1/incidents/memory-incident-1",
+      headers: { authorization: "Bearer test-operator-token" }
+    })
+    expect(repeated.statusCode).toBe(204)
+  })
+
+  it("refuses to delete an incident that is not closed", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/grafana",
+      headers: { authorization: "Bearer test-webhook-secret" },
+      payload: firingWebhookFixture
+    })
+
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/v1/incidents/memory-incident-1",
+      headers: { authorization: "Bearer test-operator-token" }
+    })
+
+    expect(response.statusCode).toBe(409)
+    expect(response.json()).toEqual({
+      error: "incident_not_deletable",
+      status: "open"
+    })
+  })
+
+  it("does not authorize incident deletion with the Grafana credential", async () => {
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/v1/incidents/memory-incident-1",
+      headers: { authorization: "Bearer test-webhook-secret" }
+    })
+
+    expect(response.statusCode).toBe(401)
+    expect(response.json()).toEqual({ error: "unauthorized" })
+  })
+
   it("does not authorize incident closure with the Grafana credential", async () => {
     const response = await app.inject({
       method: "PUT",
@@ -513,6 +607,10 @@ describe("Analyzer HTTP API", () => {
     const unavailableStore: EventStore = {
       clearAll: () => Effect.fail(new EventStoreError({
         operation: "clear",
+        cause: new Error("database unavailable")
+      })),
+      deleteClosedIncident: () => Effect.fail(new EventStoreError({
+        operation: "delete",
         cause: new Error("database unavailable")
       })),
       record: () => Effect.fail(new EventStoreError({

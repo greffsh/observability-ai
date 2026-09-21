@@ -24,6 +24,7 @@ const requestJson = async <T>(
 
   const response = await fetch(`/api${path}`, { ...init, headers })
   if (!response.ok) throw new AnalyzerApiError(response.status)
+  if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 
@@ -49,6 +50,15 @@ export const exportHandoff = (
   `/v1/incidents/${encodeURIComponent(incidentId)}/rca-handoff`,
   token,
   { method: "POST" }
+)
+
+export const deleteIncident = (
+  token: string,
+  incidentId: string
+): Promise<void> => requestJson(
+  `/v1/incidents/${encodeURIComponent(incidentId)}`,
+  token,
+  { method: "DELETE" }
 )
 
 export const closeIncident = (

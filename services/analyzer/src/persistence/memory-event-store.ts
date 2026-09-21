@@ -20,6 +20,7 @@ export const makeMemoryEventStore = (options?: {
   const occurrenceIdsByKey = new Map<string, string>()
   const incidentIdsByOccurrence = new Map<string, string>()
   const incidents = new Map<string, Incident>()
+  const deletedIncidents = new Map<string, { readonly deletedAt: Date; readonly deletedBy: string }>()
   const now = options?.now ?? (() => new Date())
   let eventSequence = 0
   let occurrenceSequence = 0
@@ -164,9 +165,26 @@ export const makeMemoryEventStore = (options?: {
       occurrenceIdsByKey.clear()
       incidentIdsByOccurrence.clear()
       incidents.clear()
+      deletedIncidents.clear()
       eventSequence = 0
       occurrenceSequence = 0
       incidentSequence = 0
+    }),
+    deleteClosedIncident: (command) => Effect.sync(() => {
+      if (deletedIncidents.has(command.incidentId)) {
+        return { outcome: "already_deleted" as const }
+      }
+      const incident = incidents.get(command.incidentId)
+      if (incident === undefined) return { outcome: "not_found" as const }
+      if (incident.status !== "closed") {
+        return { outcome: "not_deletable" as const, status: incident.status }
+      }
+
+      deletedIncidents.set(command.incidentId, {
+        deletedAt: command.deletedAt,
+        deletedBy: command.deletedBy
+      })
+      return { outcome: "deleted" as const }
     }),
     record: (events) => Effect.sync(() => {
       const insertedEventIds: Array<string> = []
@@ -265,11 +283,14 @@ export const makeMemoryEventStore = (options?: {
       )
     ),
     findIncidentById: (incidentId) => Effect.sync(() =>
-      Option.fromNullable(incidents.get(incidentId))
+      deletedIncidents.has(incidentId)
+        ? Option.none()
+        : Option.fromNullable(incidents.get(incidentId))
     ),
     listIncidents: (filter) => Effect.sync(() =>
       Array.from(incidents.values())
         .filter((incident) =>
+          !deletedIncidents.has(incident.id) &&
           (filter.status !== undefined || incident.status !== "merged") &&
           (filter.status === undefined || incident.status === filter.status) &&
           (filter.service === undefined || incident.service === filter.service) &&
@@ -291,6 +312,7 @@ export const makeMemoryEventStore = (options?: {
       occurrencesFor(incidentId)
     ),
     closeIncident: (command) => Effect.sync(() => {
+      if (deletedIncidents.has(command.incidentId)) return { outcome: "not_found" as const }
       const incident = incidents.get(command.incidentId)
       if (incident === undefined) return { outcome: "not_found" as const }
 

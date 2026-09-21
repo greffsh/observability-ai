@@ -42,6 +42,11 @@ type StoredEventRow = {
 
 type IdRow = { readonly id: string }
 
+type IncidentDeletionRow = {
+  readonly status: "open" | "awaiting_confirmation" | "closed" | "merged"
+  readonly deletedAt: Date | null
+}
+
 type IncidentRow = {
   readonly id: string
   readonly status: "open" | "awaiting_confirmation" | "closed" | "merged"
@@ -318,6 +323,34 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
         Effect.map(() => undefined),
         Effect.mapError((cause) => new EventStoreError({ operation: "clear", cause }))
       ),
+      deleteClosedIncident: (command) => sql.withTransaction(
+        Effect.gen(function* () {
+          const rows = yield* sql<IncidentDeletionRow>`
+            SELECT status, deleted_at AS "deletedAt"
+            FROM incidents
+            WHERE id = ${command.incidentId}
+            LIMIT 1
+            FOR UPDATE
+          `
+          const incident = rows[0]
+          if (incident === undefined) return { outcome: "not_found" as const }
+          if (incident.deletedAt !== null) return { outcome: "already_deleted" as const }
+          if (incident.status !== "closed") {
+            return { outcome: "not_deletable" as const, status: incident.status }
+          }
+
+          yield* sql`
+            UPDATE incidents
+            SET
+              deleted_at = ${command.deletedAt},
+              deleted_by = ${command.deletedBy}
+            WHERE id = ${command.incidentId}
+          `
+          return { outcome: "deleted" as const }
+        })
+      ).pipe(
+        Effect.mapError((cause) => new EventStoreError({ operation: "delete", cause }))
+      ),
       record: (events) => sql.withTransaction(
         Effect.gen(function* () {
           const insertedEventIds: Array<string> = []
@@ -451,6 +484,7 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
                   ) AS "openOccurrences"
                 FROM incidents AS incident
                 WHERE incident.status NOT IN ('closed', 'merged')
+                  AND incident.deleted_at IS NULL
                   AND incident.service = ${event.service}
                   AND incident.environment = ${event.environment}
                   AND incident.incident_scope = ${incidentScope}
@@ -599,6 +633,7 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
       findIncidentById: (incidentId) => sql<IncidentRow>`
         ${incidentSelection}
         WHERE id = ${incidentId}
+          AND deleted_at IS NULL
         LIMIT 1
       `.pipe(
         Effect.map((rows) => Option.map(Option.fromNullable(rows[0]), rowToIncident)),
@@ -626,7 +661,8 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
           ON relation.incident_id = incident.id
         LEFT JOIN alert_occurrences AS occurrence
           ON occurrence.id = relation.occurrence_id
-        WHERE (
+        WHERE incident.deleted_at IS NULL
+          AND (
             (${filter.status ?? null}::text IS NULL AND incident.status <> 'merged')
             OR incident.status = ${filter.status ?? null}
           )
@@ -670,6 +706,7 @@ export const makePostgresEventStore: Effect.Effect<EventStore, never, PgClient.P
           const rows = yield* sql<IncidentRow>`
             ${incidentSelection}
             WHERE id = ${command.incidentId}
+              AND deleted_at IS NULL
             LIMIT 1
             FOR UPDATE
           `

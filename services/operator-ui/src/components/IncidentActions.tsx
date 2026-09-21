@@ -6,18 +6,37 @@ export const IncidentActions = ({
   generating,
   copied,
   disabled = false,
+  deleting = false,
   error,
   onHandoff,
-  onCloseIncident
+  onCloseIncident,
+  onDeleteIncident
 }: {
   readonly incident: IncidentBase
   readonly generating: boolean
   readonly copied: boolean
   readonly disabled?: boolean
+  readonly deleting?: boolean
   readonly error: string | null
   readonly onHandoff: (incident: IncidentBase) => void
   readonly onCloseIncident: (incident: IncidentBase) => void
+  readonly onDeleteIncident?: (incident: IncidentBase) => void
 }) => {
+  if (incident.status === "closed") {
+    return onDeleteIncident === undefined
+      ? <span className="unavailable-action" aria-label="Sem ações">—</span>
+      : (
+          <button
+            className="delete-button"
+            type="button"
+            onClick={() => onDeleteIncident(incident)}
+            disabled={deleting}
+          >
+            {deleting ? "Excluindo…" : "Excluir"}
+          </button>
+        )
+  }
+
   if (!handoffAllowed(incident.status)) {
     return <span className="unavailable-action" aria-label="Sem ações">—</span>
   }

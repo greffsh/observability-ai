@@ -129,6 +129,7 @@ p {
 .secondary-button,
 .handoff-button,
 .close-button,
+.delete-button,
 .danger-button,
 .text-button {
   border: 0;
@@ -538,6 +539,24 @@ td time {
 
 .close-button:hover:not(:disabled) {
   background: #fef3f2;
+}
+
+.delete-button {
+  display: block;
+  width: 68px;
+  min-height: 30px;
+  margin: 0 auto;
+  padding: 0 8px;
+  border: 1px solid #d92d20;
+  color: #fff;
+  background: #d92d20;
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
+.delete-button:hover:not(:disabled) {
+  border-color: #b42318;
+  background: #b42318;
 }
 
 .action-feedback {
