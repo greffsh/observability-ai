@@ -56,6 +56,18 @@ _Avoid_: RCA, snapshot do repositório, prompt
 Ato explícito em que o operador entrega o contexto do incidente a um agente e aponta, separadamente, o checkout local que pode ser consultado. O estado desse checkout é uma entrada declarada pelo operador, não algo inferido pelo Analyzer.
 _Avoid_: Coleta automática de código, evidência do Analyzer
 
+**Revisão observada de deployment**:
+Identificador de versão declarado pela telemetria de uma instância do serviço durante a janela do incidente. Uma revisão imutável tem precedência sobre branch ou tag; a presença de várias revisões representa explicitamente a coexistência observada e não é reduzida a uma única versão.
+_Avoid_: Revisão confirmada, código do incidente, branch implantada
+
+**Correspondência do checkout**:
+Relação entre o HEAD do checkout fornecido pelo operador e as revisões observadas de deployment. Pode ser exata, divergente, múltipla ou desconhecida; não afirma que alterações locais não commitadas estavam implantadas.
+_Avoid_: Checkout implantado, código confirmado, causa comprovada
+
+**Revisão de código analisada**:
+Commit cujos arquivos fundamentam as afirmações e citações de código do RCA assistido. Quando uma única revisão observada de deployment está disponível no repositório local, ela é preferida ao HEAD do checkout sem exigir troca de branch; caso contrário, o HEAD pode ser usado apenas com a limitação de correspondência explícita.
+_Avoid_: Branch analisada, working tree implantado, revisão inferida
+
 **RCA assistido**:
 Análise produzida por um agente a partir do contexto do incidente e do checkout disponibilizado pelo operador. Deve separar observações, hipóteses e limitações; não altera o ciclo de vida do incidente por si só.
 _Avoid_: Severidade determinística, encerramento do incidente

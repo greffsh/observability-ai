@@ -3,7 +3,9 @@
 O Analyzer exporta um snapshot compacto e sanitizado do contexto observável de
 um incidente. Ele reúne o incidente, suas ocorrências, a severidade
 determinística e exatamente o pacote de evidências usado nessa classificação.
-Código-fonte e informações de repositório não fazem parte do contrato.
+Código-fonte não faz parte do contrato. A proveniência observada do deployment
+— revisão, ref e URL pública do repositório — é exportada separadamente e não
+concede acesso ao repositório.
 
 ## Exportar
 
@@ -34,11 +36,11 @@ Cada chamada coleta novamente as fontes e calcula a severidade sobre o mesmo
 pacote retornado. O arquivo baixado é o snapshot reproduzível daquela execução;
 o Analyzer ainda não o persiste como artefato separado.
 
-## Contrato v1
+## Contrato v2
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "handoffId": "uuid",
   "exportedAt": "2026-09-03T12:00:00.000Z",
   "incident": {
@@ -68,12 +70,37 @@ o Analyzer ainda não o persiste como artefato separado.
     "items": [],
     "limitations": []
   },
+  "deploymentContext": {
+    "status": "observed",
+    "revisions": [{
+      "service": "connect-api",
+      "repositoryUrl": "https://gitlab.example/sancor/sancor-connect",
+      "revision": "1fcf55d101fe888eaa57a8871276c08c12d4d91b",
+      "revisionSource": "vcs.ref.head.revision",
+      "serviceVersion": "1fcf55d101fe888eaa57a8871276c08c12d4d91b",
+      "ref": { "name": "observability", "type": "branch" },
+      "firstObservedAt": "2026-09-03T11:55:00.000Z",
+      "lastObservedAt": "2026-09-03T12:00:00.000Z",
+      "evidenceIds": ["deployment-1"]
+    }]
+  },
   "repositoryContext": {
     "included": false,
     "checkoutRequiredSeparately": true
   }
 }
 ```
+
+O adapter de deployment consulta `target_info` no Prometheus para o serviço e o
+ambiente durante a janela do incidente. `vcs.ref.head.revision` é a revisão
+autoritativa; `service.version` é usado como fallback explícito. Todas as
+revisões observadas são preservadas, incluindo primeiro e último timestamp. Sem
+um desses identificadores, `deploymentContext.status` é `not_observed`.
+
+O item `deployment-1` conserva a consulta auditável e não exporta labels de
+instância. Uma limitação `deployment:partial`, `deployment:truncated` ou
+`deployment:unavailable` informa respostas incompletas, limites locais ou falha
+da consulta. Branch e tag são informativos porque refs são mutáveis.
 
 Campos internos de correlação e fingerprints não são exportados nas
 ocorrências. Respostas de Prometheus, Loki e Tempo são interrompidas ao exceder
@@ -140,6 +167,19 @@ salva como artefato local antes da geração do diagnóstico. Um erro de rede,
 autenticação ou incidente inexistente interrompe a análise; a skill não escolhe
 outro incidente.
 
-A revisão e a fidelidade do checkout são responsabilidade explícita do
-operador. A skill mantém o checkout somente para leitura e valida o relatório
-Markdown contra o handoff salvo e as referências reais de arquivo e linha.
+A escolha do repositório local continua sendo responsabilidade explícita do
+operador. A skill mantém o checkout somente para leitura, compara seu HEAD com
+`deploymentContext` e classifica a correspondência como `exact`, `mismatch`,
+`multiple_revisions` ou `unknown`.
+
+Quando existe uma única revisão observada e seu commit já está no banco de
+objetos Git local, a skill lê esse commit diretamente com operações read-only,
+sem trocar a branch ou alterar o working tree. As citações de código são então
+validadas contra o conteúdo da revisão observada, mesmo que o checkout ativo
+esteja em outro commit. Se a revisão não existir localmente ou houver múltiplas
+revisões, a análise usa o HEAD apenas como referência não comprovada e preserva
+a limitação correspondente.
+
+Os helpers rejeitam snapshots v2 incompletos em vez de reconstruir campos
+ausentes. O validador também exige citação de arquivo e linha para afirmações
+explícitas sobre implementação.

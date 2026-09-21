@@ -11,6 +11,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from handoff_contract import validate_handoff
+
 SEVERITIES = {"informativa", "baixa", "media", "alta", "critica", "inconclusiva"}
 CAUSE_STATUSES = {"hypothesis", "insufficient_context"}
 SECTIONS = [
@@ -22,6 +24,11 @@ SECTIONS = [
 ]
 EVIDENCE_ID_RE = re.compile(r"`([A-Za-z]+-\d+)`")
 CODE_CITATION_RE = re.compile(r"`([^`\s]+):(\d+)`")
+CODE_CLAIM_RE = re.compile(
+    r"\b(?:checkout|c[oó]digo|implementa[cç][aã]o|revis[aã]o implantada)\b"
+    r".{0,120}\b(?:confirma|demonstra|mostra|implementa|transforma|retorna|lan[cç]a)\b",
+    flags=re.IGNORECASE | re.DOTALL,
+)
 
 
 @dataclass(frozen=True)
@@ -100,6 +107,90 @@ def checkout_state(checkout: Path) -> CheckoutState:
     return CheckoutState(branch, commit, state)
 
 
+def resolve_revision(checkout: Path, revision: str) -> str | None:
+    try:
+        return git_output(checkout, "rev-parse", "--verify", "--end-of-options", f"{revision}^{{commit}}")
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def deployment_identifiers(handoff: dict[str, object]) -> dict[str, str]:
+    context = handoff.get("deploymentContext")
+    if not isinstance(context, dict) or context.get("status") != "observed":
+        return {}
+    revisions = context.get("revisions")
+    if not isinstance(revisions, list):
+        return {}
+
+    unique: dict[str, str] = {}
+    for revision in revisions:
+        if not isinstance(revision, dict):
+            continue
+        identifier = revision.get("revision")
+        source = revision.get("revisionSource")
+        if not isinstance(identifier, str) or source not in {
+            "vcs.ref.head.revision",
+            "service.version",
+        }:
+            continue
+        if identifier not in unique or source == "vcs.ref.head.revision":
+            unique[identifier] = source
+    return unique
+
+
+def deployment_correspondence(
+    handoff: dict[str, object], checkout: Path, checkout_commit: str
+) -> str:
+    identifiers = deployment_identifiers(handoff)
+    if not identifiers:
+        return "unknown"
+    if len(identifiers) > 1:
+        return "multiple_revisions"
+
+    identifier, source = next(iter(identifiers.items()))
+    resolved = resolve_revision(checkout, identifier)
+    if identifier == checkout_commit or resolved == checkout_commit:
+        return "exact"
+    if source == "vcs.ref.head.revision" or re.fullmatch(r"[0-9a-fA-F]{7,64}", identifier):
+        return "mismatch"
+    return "unknown"
+
+
+def analysis_revision(
+    handoff: dict[str, object], checkout: Path, state: CheckoutState
+) -> tuple[str, str]:
+    identifiers = deployment_identifiers(handoff)
+    if len(identifiers) == 1:
+        identifier = next(iter(identifiers))
+        resolved = resolve_revision(checkout, identifier)
+        if resolved is not None:
+            return resolved, "deployment"
+    if state.commit != "not_available":
+        return state.commit, "checkout"
+    return "not_available", "not_available"
+
+
+def revision_file(checkout: Path, revision: str, relative: Path) -> str | None:
+    try:
+        return subprocess.run(
+            [
+                "git",
+                "-C",
+                str(checkout),
+                "show",
+                "--no-ext-diff",
+                "--end-of-options",
+                f"{revision}:{relative.as_posix()}",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("rca", type=Path)
@@ -115,15 +206,18 @@ def main() -> int:
         print(f"ERROR: {error}")
         return 1
 
+    if not isinstance(handoff, dict):
+        print("ERROR: handoff must be a JSON object")
+        return 1
+    contract_errors = validate_handoff(handoff)
+    if contract_errors:
+        for error in contract_errors:
+            print(f"ERROR: {error}")
+        return 1
+
     checkout = args.checkout.resolve()
     if not checkout.is_dir():
         errors.append("checkout must be a readable directory")
-
-    if (
-        handoff.get("schemaVersion") != 1
-        or handoff.get("repositoryContext", {}).get("included") is not False
-    ):
-        errors.append("handoff must have schemaVersion=1 and repositoryContext.included=false")
 
     incident = handoff.get("incident", {})
     incident_id = incident.get("id")
@@ -173,6 +267,9 @@ def main() -> int:
 
     diagnosis = section_text(text, "Diagnóstico")
     diagnosis_ids = set(EVIDENCE_ID_RE.findall(diagnosis))
+    diagnosis_code_citations = CODE_CITATION_RE.findall(diagnosis)
+    if CODE_CLAIM_RE.search(diagnosis) is not None and not diagnosis_code_citations:
+        errors.append("explicit code claim requires a code citation in Diagnóstico")
     if not diagnosis_ids:
         errors.append("Diagnóstico must cite at least one evidence ID")
     for evidence_id in diagnosis_ids:
@@ -225,11 +322,15 @@ def main() -> int:
 
     if checkout.is_dir():
         state = checkout_state(checkout)
+        correspondence = deployment_correspondence(handoff, checkout, state.commit)
+        analyzed_revision, analyzed_origin = analysis_revision(handoff, checkout, state)
         expected_checkout_values = {
             "Branch": state.branch,
             "Commit": state.commit,
             "Estado": state.state,
-            "Correspondência com deployment": "unknown",
+            "Correspondência com deployment": correspondence,
+            "Revisão de código analisada": analyzed_revision,
+            "Origem da revisão analisada": analyzed_origin,
         }
         checkout_section = section_text(text, "Checkout analisado")
         for label, expected in expected_checkout_values.items():
@@ -253,14 +354,26 @@ def main() -> int:
             except ValueError:
                 errors.append(f"code citation escapes checkout: {path}:{line}")
                 continue
-            if not candidate.is_file():
-                errors.append(f"code citation file not found: {path}")
-                continue
-            try:
-                line_count = sum(1 for _ in candidate.open(encoding="utf-8", errors="replace"))
-            except OSError:
-                errors.append(f"code citation file is unreadable: {path}")
-                continue
+
+            if analyzed_origin == "deployment":
+                content = revision_file(checkout, analyzed_revision, relative)
+                if content is None:
+                    errors.append(
+                        f"code citation file not found in analyzed revision: {path}"
+                    )
+                    continue
+                line_count = len(content.splitlines())
+            else:
+                if not candidate.is_file():
+                    errors.append(f"code citation file not found: {path}")
+                    continue
+                try:
+                    line_count = sum(
+                        1 for _ in candidate.open(encoding="utf-8", errors="replace")
+                    )
+                except OSError:
+                    errors.append(f"code citation file is unreadable: {path}")
+                    continue
             if line > line_count:
                 errors.append(f"code citation line exceeds file: {path}:{line}")
 

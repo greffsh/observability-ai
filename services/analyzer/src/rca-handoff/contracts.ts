@@ -22,8 +22,23 @@ export type RcaHandoffOccurrence = Pick<
   "id" | "alertName" | "startedAt" | "endedAt" | "firingObserved"
 > & { readonly status: AlertOccurrenceStatus }
 
+export type DeploymentRevision = {
+  readonly service: string
+  readonly repositoryUrl: string | null
+  readonly revision: string
+  readonly revisionSource: "vcs.ref.head.revision" | "service.version"
+  readonly serviceVersion: string | null
+  readonly ref: {
+    readonly name: string | null
+    readonly type: "branch" | "tag" | null
+  }
+  readonly firstObservedAt: string
+  readonly lastObservedAt: string
+  readonly evidenceIds: ReadonlyArray<string>
+}
+
 export type RcaHandoffPackage = {
-  readonly schemaVersion: 1
+  readonly schemaVersion: 2
   readonly handoffId: string
   readonly exportedAt: Date
   readonly incident: RcaHandoffIncident
@@ -35,6 +50,10 @@ export type RcaHandoffPackage = {
     readonly window: EvidenceInterval
     readonly items: ReadonlyArray<EvidenceItem>
     readonly limitations: ReadonlyArray<EvidenceLimitation>
+  }
+  readonly deploymentContext: {
+    readonly status: "observed" | "not_observed"
+    readonly revisions: ReadonlyArray<DeploymentRevision>
   }
   readonly repositoryContext: {
     readonly included: false

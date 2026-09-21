@@ -8,6 +8,7 @@ import type { SeverityAssessment, SeverityAssessor } from "../severity/contracts
 import {
   RcaHandoffIncidentNotFoundError,
   RcaHandoffUnavailableError,
+  type DeploymentRevision,
   type RcaHandoffExporter,
   type RcaHandoffPackage
 } from "./contracts.js"
@@ -43,6 +44,95 @@ const sanitizeSeverity = (
   observations: assessment.observations.map((value) => sanitizeString(value, maxStringLength)),
   limitations: assessment.limitations.map((value) => sanitizeString(value, maxStringLength))
 })
+
+const stringOrNull = (value: unknown): string | null =>
+  typeof value === "string" && value.trim().length > 0 ? value : null
+
+const deploymentContextFrom = (
+  service: string,
+  evidence: ReadonlyArray<EvidenceItem>,
+  maxStringLength: number
+): RcaHandoffPackage["deploymentContext"] => {
+  const revisions = new Map<string, DeploymentRevision>()
+
+  for (const item of evidence) {
+    if (item.source !== "deployment" || item.data === null || typeof item.data !== "object") {
+      continue
+    }
+    const candidates = (item.data as { readonly revisions?: unknown }).revisions
+    if (!Array.isArray(candidates)) continue
+
+    for (const candidate of candidates) {
+      if (candidate === null || typeof candidate !== "object") continue
+      const input = candidate as Readonly<Record<string, unknown>>
+      const revision = stringOrNull(input.revision)
+      const revisionSource = input.revisionSource
+      const firstObservedAt = stringOrNull(input.firstObservedAt)
+      const lastObservedAt = stringOrNull(input.lastObservedAt)
+      if (
+        revision === null ||
+        (revisionSource !== "vcs.ref.head.revision" && revisionSource !== "service.version") ||
+        firstObservedAt === null ||
+        lastObservedAt === null
+      ) continue
+
+      const inputRef = input.ref !== null && typeof input.ref === "object"
+        ? input.ref as Readonly<Record<string, unknown>>
+        : {}
+      const refType = inputRef.type === "branch" || inputRef.type === "tag"
+        ? inputRef.type
+        : null
+      const sanitizedRevision = sanitizeString(revision, maxStringLength)
+      const existing = revisions.get(sanitizedRevision)
+      if (existing !== undefined) {
+        revisions.set(sanitizedRevision, {
+          ...existing,
+          firstObservedAt: firstObservedAt < existing.firstObservedAt
+            ? firstObservedAt
+            : existing.firstObservedAt,
+          lastObservedAt: lastObservedAt > existing.lastObservedAt
+            ? lastObservedAt
+            : existing.lastObservedAt,
+          evidenceIds: existing.evidenceIds.includes(item.id)
+            ? existing.evidenceIds
+            : [...existing.evidenceIds, sanitizeString(item.id, maxStringLength)]
+        })
+        continue
+      }
+
+      const repositoryUrl = stringOrNull(input.repositoryUrl)
+      const serviceVersion = stringOrNull(input.serviceVersion)
+      const refName = stringOrNull(inputRef.name)
+      revisions.set(sanitizedRevision, {
+        service: sanitizeString(service, maxStringLength),
+        repositoryUrl: repositoryUrl === null
+          ? null
+          : sanitizeString(repositoryUrl, maxStringLength),
+        revision: sanitizedRevision,
+        revisionSource,
+        serviceVersion: serviceVersion === null
+          ? null
+          : sanitizeString(serviceVersion, maxStringLength),
+        ref: {
+          name: refName === null ? null : sanitizeString(refName, maxStringLength),
+          type: refType
+        },
+        firstObservedAt,
+        lastObservedAt,
+        evidenceIds: [sanitizeString(item.id, maxStringLength)]
+      })
+    }
+  }
+
+  const observed = [...revisions.values()].sort((left, right) =>
+    left.firstObservedAt.localeCompare(right.firstObservedAt) ||
+    left.revision.localeCompare(right.revision)
+  )
+  return {
+    status: observed.length === 0 ? "not_observed" : "observed",
+    revisions: observed
+  }
+}
 
 const compactIncident = (incident: Incident, maxStringLength: number) => ({
   id: incident.id,
@@ -92,7 +182,7 @@ export const makeRcaHandoffExporter = (
       const evidencePackage = severityResult.evidencePackage
 
       return {
-        schemaVersion: 1,
+        schemaVersion: 2,
         handoffId: makeId(),
         exportedAt: now(),
         incident: compactIncident(incident.value, maxStringLength),
@@ -118,6 +208,11 @@ export const makeRcaHandoffExporter = (
             description: sanitizeString(limitation.description, maxStringLength)
           }))
         },
+        deploymentContext: deploymentContextFrom(
+          incident.value.service,
+          evidencePackage.evidence,
+          maxStringLength
+        ),
         repositoryContext: {
           included: false,
           checkoutRequiredSeparately: true

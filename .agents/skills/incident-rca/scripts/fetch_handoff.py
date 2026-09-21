@@ -14,6 +14,8 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 from uuid import UUID
 
+from handoff_contract import validate_handoff
+
 SKILL_DIR = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = SKILL_DIR.parents[2]
 
@@ -94,19 +96,11 @@ def fetch_handoff(analyzer_url: str, token: str, incident_id: str) -> dict[str, 
     except json.JSONDecodeError as error:
         raise RuntimeError("Analyzer returned invalid JSON") from error
 
-    if not isinstance(handoff, dict):
-        raise RuntimeError("Analyzer returned a handoff that is not a JSON object")
-    if handoff.get("schemaVersion") != 1:
-        raise RuntimeError("Analyzer returned an unsupported handoff schema")
-    incident = handoff.get("incident")
-    if not isinstance(incident, dict) or incident.get("id") != incident_id:
-        raise RuntimeError("Analyzer handoff incident ID does not match the requested incident")
-    repository_context = handoff.get("repositoryContext")
-    if not isinstance(repository_context, dict) or repository_context.get("included") is not False:
-        raise RuntimeError("Analyzer handoff unexpectedly includes repository context")
-    evidence = handoff.get("evidence")
-    if not isinstance(evidence, dict) or not isinstance(evidence.get("items"), list) or not evidence["items"]:
-        raise RuntimeError("Analyzer handoff does not contain evidence items")
+    contract_errors = validate_handoff(handoff, expected_incident_id=incident_id)
+    if contract_errors:
+        raise RuntimeError(
+            "Analyzer returned an invalid handoff: " + "; ".join(contract_errors)
+        )
 
     return handoff
 

@@ -260,7 +260,11 @@ Essa única operação coleta as evidências, calcula a severidade e devolve o
 snapshot sanitizado para o agente. Evidência e severidade não possuem endpoints
 operacionais separados. A recuperação do serviço não é pré-requisito: um
 handoff durante a falha serve para análise preliminar, e uma nova exportação
-depois do `resolved` pode alimentar o RCA final.
+depois do `resolved` pode alimentar o RCA final. O handoff v2 também consulta
+`target_info` no Prometheus e preserva todas as revisões observadas na janela do
+incidente; a skill compara esses identificadores com o HEAD e, quando existe uma
+única revisão no banco de objetos Git local, analisa esse commit sem trocar a
+branch ativa.
 
 Depois que todos os alertas forem resolvidos, um operador pode encerrar o
 incidente em `awaiting_confirmation`:

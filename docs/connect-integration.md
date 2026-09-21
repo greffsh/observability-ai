@@ -31,6 +31,31 @@ O catálogo do Connect usa apenas `totalRequests` e `failedRequests`. Sinais de
 disponibilidade continuam suportados genericamente pelo Analyzer, mas não fazem
 parte deste contrato porque exigem monitoramento externo ao processo.
 
+## Proveniência do deployment
+
+O SDK OpenTelemetry incorpora os atributos padrão fornecidos por
+`OTEL_RESOURCE_ATTRIBUTES` em métricas, logs e traces. O Analyzer consulta a
+série `target_info` no Prometheus durante a janela do incidente e exporta a
+revisão no handoff v2. Use a revisão completa e imutável como autoridade; branch
+e tag servem apenas como contexto informativo.
+
+Atributos esperados:
+
+```text
+service.version=<sha-ou-versão>
+vcs.ref.head.revision=<sha-completo>
+vcs.ref.head.name=<branch-ou-tag>
+vcs.ref.head.type=<branch-ou-tag>
+vcs.repository.url.full=<url-do-repositório>
+```
+
+Quando `vcs.ref.head.revision` não existe, o Analyzer registra
+`service.version` como fallback e mantém essa origem explícita. Mais de uma
+revisão observada na janela é preservada, o que evita declarar uma
+correspondência exata durante rolling deployments. A injeção desses valores em
+GitLab CI, Helm e Kubernetes está descrita em
+[service-onboarding.md](service-onboarding.md#5-integrar-a-proveniência-ao-cicd).
+
 ## Execução local
 
 Com a stack do Analyzer iniciada, execute o Connect fora de `development` e
@@ -39,8 +64,11 @@ aponte o endpoint OTLP para o Alloy:
 ```bash
 cd /home/greff/eureka/sancor-connect
 yarn build
+CONNECT_SHA=$(git rev-parse HEAD)
+CONNECT_REF=$(git branch --show-current)
 APP_ENVIRONMENT=local \
 OTEL_CONFIG='{"name":"connect-api","group":"sancor","environment":"local"}' \
+OTEL_RESOURCE_ATTRIBUTES="service.version=${CONNECT_SHA},vcs.ref.head.revision=${CONNECT_SHA},vcs.ref.head.name=${CONNECT_REF},vcs.ref.head.type=branch,vcs.repository.url.full=https://gitlab.eurekalabs.com.br/sancor/sancor-connect" \
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4317 \
 OTEL_TRACES_EXPORTER=otlp \
 OTEL_METRIC_EXPORT_INTERVAL=10000 \
@@ -56,9 +84,12 @@ Inicie o Connect sobrescrevendo somente uma dependência HTTP para uma porta
 offline:
 
 ```bash
+CONNECT_SHA=$(git rev-parse HEAD)
+CONNECT_REF=$(git branch --show-current)
 APP_ENVIRONMENT=local \
 CONSULTAS_API_URL=http://127.0.0.1:65534 \
 OTEL_CONFIG='{"name":"connect-api","group":"sancor","environment":"local"}' \
+OTEL_RESOURCE_ATTRIBUTES="service.version=${CONNECT_SHA},vcs.ref.head.revision=${CONNECT_SHA},vcs.ref.head.name=${CONNECT_REF},vcs.ref.head.type=branch,vcs.repository.url.full=https://gitlab.eurekalabs.com.br/sancor/sancor-connect" \
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4317 \
 OTEL_TRACES_EXPORTER=otlp \
 OTEL_METRIC_EXPORT_INTERVAL=10000 \

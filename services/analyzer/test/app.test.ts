@@ -451,7 +451,7 @@ describe("Analyzer HTTP API", () => {
       'attachment; filename="rca-handoff-handoff-1.json"'
     )
     expect(response.json()).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       handoffId: "handoff-1",
       exportedAt: "2026-08-28T13:21:05.000Z",
       incident: {
@@ -473,6 +473,10 @@ describe("Analyzer HTTP API", () => {
         packageId: "evidence-package-1",
         items: [{ source: "alert" }],
         limitations: []
+      },
+      deploymentContext: {
+        status: "not_observed",
+        revisions: []
       },
       repositoryContext: {
         included: false,

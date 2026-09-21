@@ -46,29 +46,61 @@ class ValidateRcaTest(unittest.TestCase):
         self.handoff.write_text(
             json.dumps(
                 {
-                    "schemaVersion": 1,
+                    "schemaVersion": 2,
+                    "handoffId": "handoff-1",
+                    "exportedAt": "2026-08-31T10:10:00.000Z",
                     "incident": {
                         "id": "incident-1",
+                        "status": "open",
                         "service": "connect-api",
                         "environment": "local",
+                        "incidentScope": "http",
+                        "mergedIntoIncidentId": None,
+                        "detectedAt": "2026-08-31T10:00:00.000Z",
+                        "lastActivityAt": "2026-08-31T10:05:00.000Z",
+                        "signalsClearedAt": None,
+                        "closure": None,
                     },
+                    "occurrences": [],
                     "severity": {
+                        "assessedAt": "2026-08-31T10:10:00.000Z",
                         "recommendedSeverity": "alta",
+                        "serviceCriticality": "medium",
+                        "signals": {},
+                        "triggeredRules": [],
+                        "observations": [],
                         "limitations": ["logs:truncated"],
                     },
                     "evidence": {
+                        "packageId": "evidence-1",
+                        "collectedAt": "2026-08-31T10:10:00.000Z",
+                        "window": {
+                            "start": "2026-08-31T09:55:00.000Z",
+                            "end": "2026-08-31T10:10:00.000Z",
+                        },
                         "items": [
                             {
                                 "id": "logs-1",
                                 "source": "logs",
+                                "description": "Observed failure",
                                 "reference": "http://loki.test/query",
+                                "interval": None,
+                                "untrusted": True,
+                                "data": {},
                             }
                         ],
                         "limitations": [
                             {"source": "logs", "code": "truncated", "description": "limited"}
                         ],
                     },
-                    "repositoryContext": {"included": False},
+                    "deploymentContext": {
+                        "status": "not_observed",
+                        "revisions": [],
+                    },
+                    "repositoryContext": {
+                        "included": False,
+                        "checkoutRequiredSeparately": True,
+                    },
                 }
             ),
             encoding="utf-8",
@@ -110,7 +142,30 @@ correspondente (`src/app.ts:2`). A relação sustenta uma hipótese, não prova 
 - **Commit:** `{self.commit}`
 - **Estado:** `clean`
 - **Correspondência com deployment:** `unknown`
+- **Revisão de código analisada:** `{self.commit}`
+- **Origem da revisão analisada:** `checkout`
 """
+
+    def observe_revisions(self, *revisions: str, source: str = "vcs.ref.head.revision") -> None:
+        handoff = json.loads(self.handoff.read_text(encoding="utf-8"))
+        handoff["deploymentContext"] = {
+            "status": "observed",
+            "revisions": [
+                {
+                    "service": "connect-api",
+                    "repositoryUrl": "https://gitlab.example/sancor/connect-api",
+                    "revision": revision,
+                    "revisionSource": source,
+                    "serviceVersion": revision,
+                    "ref": {"name": "main", "type": "branch"},
+                    "firstObservedAt": "2026-08-31T09:55:00.000Z",
+                    "lastObservedAt": "2026-08-31T10:05:00.000Z",
+                    "evidenceIds": ["deployment-1"],
+                }
+                for revision in revisions
+            ],
+        }
+        self.handoff.write_text(json.dumps(handoff), encoding="utf-8")
 
     def validate(self, document: str) -> subprocess.CompletedProcess[str]:
         rca = self.root / "diagnosis.md"
@@ -133,6 +188,145 @@ correspondente (`src/app.ts:2`). A relação sustenta uma hipótese, não prova 
         result = self.validate(self.document())
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("1 evidence items", result.stdout)
+
+    def test_accepts_an_exact_deployment_correspondence(self) -> None:
+        self.observe_revisions(self.commit)
+
+        result = self.validate(
+            self.document()
+            .replace(
+                "**Correspondência com deployment:** `unknown`",
+                "**Correspondência com deployment:** `exact`",
+            )
+            .replace(
+                "**Origem da revisão analisada:** `checkout`",
+                "**Origem da revisão analisada:** `deployment`",
+            )
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_rejects_an_incorrect_deployment_correspondence(self) -> None:
+        self.observe_revisions(self.commit)
+
+        result = self.validate(self.document())
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("expected exact", result.stdout)
+
+    def test_resolves_a_service_version_tag_to_the_checkout_commit(self) -> None:
+        subprocess.run(
+            ["git", "-C", str(self.checkout), "tag", "release-local"],
+            check=True,
+        )
+        self.observe_revisions("release-local", source="service.version")
+
+        result = self.validate(
+            self.document()
+            .replace(
+                "**Correspondência com deployment:** `unknown`",
+                "**Correspondência com deployment:** `exact`",
+            )
+            .replace(
+                "**Origem da revisão analisada:** `checkout`",
+                "**Origem da revisão analisada:** `deployment`",
+            )
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_keeps_an_unresolvable_service_version_unknown(self) -> None:
+        self.observe_revisions("release-not-present", source="service.version")
+
+        result = self.validate(self.document())
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_accepts_a_mismatched_deployment_correspondence(self) -> None:
+        self.observe_revisions("b" * 40)
+
+        result = self.validate(
+            self.document().replace(
+                "**Correspondência com deployment:** `unknown`",
+                "**Correspondência com deployment:** `mismatch`",
+            )
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_requires_multiple_revisions_when_more_than_one_was_observed(self) -> None:
+        self.observe_revisions(self.commit, "b" * 40)
+
+        result = self.validate(
+            self.document().replace(
+                "**Correspondência com deployment:** `unknown`",
+                "**Correspondência com deployment:** `multiple_revisions`",
+            )
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_reads_code_from_an_observed_revision_without_switching_checkout(self) -> None:
+        deployed_file = self.checkout / "src/deployed.ts"
+        deployed_file.write_text("export const deployed = true\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(self.checkout), "add", "."], check=True)
+        subprocess.run(
+            ["git", "-C", str(self.checkout), "commit", "-m", "deployed revision"],
+            check=True,
+            capture_output=True,
+        )
+        deployed_commit = subprocess.run(
+            ["git", "-C", str(self.checkout), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        subprocess.run(
+            ["git", "-C", str(self.checkout), "reset", "--hard", self.commit],
+            check=True,
+            capture_output=True,
+        )
+        self.observe_revisions(deployed_commit)
+        document = (
+            self.document()
+            .replace("o checkout implementa", "a revisão implantada implementa")
+            .replace("`src/app.ts:2`", "`src/deployed.ts:1`")
+            .replace(
+                "**Correspondência com deployment:** `unknown`",
+                "**Correspondência com deployment:** `mismatch`",
+            )
+            .replace(
+                f"**Revisão de código analisada:** `{self.commit}`",
+                f"**Revisão de código analisada:** `{deployed_commit}`",
+            )
+            .replace(
+                "**Origem da revisão analisada:** `checkout`",
+                "**Origem da revisão analisada:** `deployment`",
+            )
+        )
+
+        result = self.validate(document)
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(deployed_file.exists())
+
+    def test_rejects_an_incomplete_v2_handoff(self) -> None:
+        handoff = json.loads(self.handoff.read_text(encoding="utf-8"))
+        del handoff["handoffId"]
+        self.handoff.write_text(json.dumps(handoff), encoding="utf-8")
+
+        result = self.validate(self.document())
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("handoffId", result.stdout)
+
+    def test_requires_a_code_citation_for_an_explicit_code_claim(self) -> None:
+        result = self.validate(
+            self.document().replace(" (`src/app.ts:2`)", "")
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("code claim requires a code citation", result.stdout)
 
     def test_rejects_a_reference_that_does_not_match_the_handoff(self) -> None:
         result = self.validate(self.document().replace("http://loki.test/query", "http://wrong.test"))

@@ -37,7 +37,9 @@ Todas as evidências decisivas aparecem como IDs entre crases, por exemplo
 - **Branch:** `<branch|detached|not_available>`
 - **Commit:** `<sha|not_available>`
 - **Estado:** `<clean|dirty|not_a_git_repository>`
-- **Correspondência com deployment:** `unknown`
+- **Correspondência com deployment:** `<exact|mismatch|multiple_revisions|unknown>`
+- **Revisão de código analisada:** `<sha|not_available>`
+- **Origem da revisão analisada:** `<deployment|checkout|not_available>`
 ```
 
 ## Evidence rules
@@ -55,11 +57,32 @@ Todas as evidências decisivas aparecem como IDs entre crases, por exemplo
 
 ## Code and checkout rules
 
-- Code citations must be repository-relative, stay inside the supplied checkout
-  and point to a real one-based line number.
-- A code citation supports what the checkout implements; it does not prove that
-  the same revision was deployed.
+- Code citations must be repository-relative and point to a real one-based line
+  number in `Revisão de código analisada`.
+- When `Origem da revisão analisada` is `deployment`, inspect and validate files
+  from that Git commit object without switching the checkout. Such a citation
+  supports what the observed deployment revision implements.
+- When the origin is `checkout`, a citation supports only what the supplied
+  checkout implements and does not prove that revision was deployed.
+- Every explicit implementation claim requires at least one code citation in
+  `Diagnóstico`.
 - When the checkout is a Git repository, branch, commit and dirty state must
   match its current read-only Git state.
-- Deployment correspondence remains `unknown` because the v1 handoff contains
-  no independently verifiable deployment provenance.
+- Derive deployment correspondence only from the v2 handoff's
+  `deploymentContext` and the checkout HEAD:
+  - `exact`: exactly one observed identifier resolves to the checkout HEAD;
+  - `mismatch`: one authoritative revision or commit-like fallback differs;
+  - `multiple_revisions`: more than one distinct revision was observed;
+  - `unknown`: no revision was observed, or a non-commit `service.version`
+    fallback cannot be resolved in the checkout.
+- Branch and tag names are informational because refs are mutable. The immutable
+  full revision is authoritative when `revisionSource` is
+  `vcs.ref.head.revision`.
+- If exactly one deployment identifier resolves in the local Git object database,
+  `Revisão de código analisada` is that full commit and its origin is `deployment`,
+  even when the checkout correspondence is `mismatch`.
+- If no unique deployment revision can be read locally, analyze the checkout HEAD
+  with origin `checkout` and preserve the mismatch, multiple-revision or unknown
+  limitation.
+- Dirty working-tree contents never affect citations whose origin is `deployment`;
+  they remain relevant when the analysis origin is `checkout`.

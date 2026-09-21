@@ -4,6 +4,7 @@ import type { Incident } from "../src/domain/incident.ts"
 import type { EvidenceCollectionContext } from "../src/evidence/contracts.ts"
 import { defaultEvidencePolicy } from "../src/evidence/evidence-collector.ts"
 import { makeLokiEvidenceSource } from "../src/evidence/loki-source.ts"
+import { makePrometheusDeploymentEvidenceSource } from "../src/evidence/prometheus-deployment-source.ts"
 import { makePrometheusEvidenceSource } from "../src/evidence/prometheus-source.ts"
 import { makeTempoEvidenceSource } from "../src/evidence/tempo-source.ts"
 import { checkoutServiceCatalog } from "./fixtures/service-catalog.ts"
@@ -84,6 +85,83 @@ describe("evidence source adapters", () => {
     expect(result.evidence[0]?.data).not.toMatchObject({
       series: [{ labels: { instance: expect.anything() } }]
     })
+  })
+
+  it("normalizes every deployment revision observed in the incident window", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      status: "success",
+      data: {
+        resultType: "matrix",
+        result: [
+          {
+            metric: {
+              __name__: "target_info",
+              job: "checkout-api",
+              deployment_environment_name: "local",
+              service_version: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              vcs_ref_head_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              vcs_ref_head_name: "main",
+              vcs_ref_head_type: "branch",
+              vcs_repository_url_full: "https://gitlab.example/sancor/checkout-api",
+              instance: "internal-host:8081"
+            },
+            values: [[1788170100, "1"], [1788170400, "1"]]
+          },
+          {
+            metric: {
+              job: "checkout-api",
+              deployment_environment_name: "local",
+              service_version: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              vcs_ref_head_name: "release-v2",
+              vcs_ref_head_type: "tag",
+              vcs_repository_url_full: "https://gitlab.example/sancor/checkout-api"
+            },
+            values: [[1788170500, "1"]]
+          }
+        ]
+      }
+    }), { headers: { "content-type": "application/json" } }))
+    vi.stubGlobal("fetch", fetchMock)
+    const source = makePrometheusDeploymentEvidenceSource({
+      baseUrl: "http://prometheus:9090",
+      publicBaseUrl: "http://localhost:9090"
+    })
+
+    const result = await Effect.runPromise(source.collect(context))
+    const requestUrl = fetchMock.mock.calls[0]?.[0] as URL
+
+    expect(requestUrl.searchParams.get("query")).toBe(
+      'target_info{job="checkout-api",deployment_environment_name="local"}'
+    )
+    expect(result.evidence).toEqual([expect.objectContaining({
+      id: "deployment-1",
+      source: "deployment",
+      reference: expect.stringContaining("http://localhost:9090/api/v1/query_range"),
+      data: {
+        query: 'target_info{job="checkout-api",deployment_environment_name="local"}',
+        revisions: [
+          {
+            revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            revisionSource: "vcs.ref.head.revision",
+            serviceVersion: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            repositoryUrl: "https://gitlab.example/sancor/checkout-api",
+            ref: { name: "main", type: "branch" },
+            firstObservedAt: "2026-08-31T09:55:00.000Z",
+            lastObservedAt: "2026-08-31T10:00:00.000Z"
+          },
+          {
+            revision: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            revisionSource: "service.version",
+            serviceVersion: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            repositoryUrl: "https://gitlab.example/sancor/checkout-api",
+            ref: { name: "release-v2", type: "tag" },
+            firstObservedAt: "2026-08-31T10:01:40.000Z",
+            lastObservedAt: "2026-08-31T10:01:40.000Z"
+          }
+        ]
+      }
+    })])
+    expect(JSON.stringify(result.evidence)).not.toContain("internal-host")
   })
 
   it("uses a configured impact query for a different service without code changes", async () => {

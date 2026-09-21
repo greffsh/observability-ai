@@ -1242,6 +1242,16 @@ Usar uma entrada por decisão tomada:
 - **Consequências:** o handoff pode mostrar o caminho entre serviços sem transformar ordem temporal em prova de causa; Tempo entra na stack local e no health check; SDKs precisam iniciar antes dos frameworks; filesystem tracing fica desabilitado para evitar ruído; a skill trata nomes e atributos de spans como dados não confiáveis. A comparação da qualidade do RCA com e sem traces permanece parte da avaliação manual do CP-09.
 - **Checkpoints afetados:** CP-01, CP-02, CP-03, CP-07 e CP-09.
 
+### DEC-025 — Proveniência observável do deployment no handoff
+
+- **Data:** 2026-09-21
+- **Estado:** aceita
+- **Contexto:** o handoff anterior entregava evidências operacionais e um checkout separado, mas não permitia saber se o código analisado correspondia à revisão executada durante o incidente. Tags de imagem e dados da API de deployments provam etapas do pipeline, mas não identificam com a mesma precisão as instâncias que emitiram a telemetria durante rolling deployments.
+- **Decisão:** transportar revisão completa, ref e URL do repositório como atributos de recurso OpenTelemetry. O Analyzer consulta `target_info` na janela do incidente, preserva todas as revisões observadas e exporta `deploymentContext` no handoff v2. `vcs.ref.head.revision` é autoritativo; `service.version` é fallback com origem explícita. O checkout continua separado e a skill classifica a correspondência como `exact`, `mismatch`, `multiple_revisions` ou `unknown`.
+- **Alternativas consideradas:** inferir somente pela tag da imagem; consultar apenas a API de deployments do GitLab; confiar em branch/tag; manter toda correspondência como desconhecida.
+- **Consequências:** o RCA distingue checkout exato, divergência e coexistência de revisões sem dar acesso de repositório ao Analyzer; branch e tag permanecem informativas; uma única revisão observada já presente no repositório local pode ser lida diretamente do banco de objetos Git, sem trocar o working tree, e passa a ser a base validável das citações; ambientes precisam injetar os atributos OTEL para obter correspondência; a API do GitLab pode complementar auditoria futura, mas não substitui a observação por instância; o rollout em CI/CD permanece separado da prova local.
+- **Checkpoints afetados:** CP-07 e CP-09.
+
 ## Histórico de atualizações
 
 | Data       | Alteração                                                                                                                                                                          | Responsável |
@@ -1287,3 +1297,4 @@ Usar uma entrada por decisão tomada:
 | 2026-09-15 | Resposta final da skill de RCA ampliada com resumo operacional contendo impacto, causa provável e sustentação nas evidências validadas.                                            | Codex       |
 | 2026-09-16 | Interface operacional mínima implementada para listar, filtrar, gerar/copiar handoffs e fechar incidentes aguardando confirmação; validação manual permanece pendente.             | Codex       |
 | 2026-09-16 | Traces distribuídos promovidos ao escopo: Tempo integrado, evidência limitada no Analyzer e propagação W3C aplicada ao Connect e ao monorepo de micros.                                | Codex       |
+| 2026-09-21 | Handoff v2 passou a preservar revisões observadas via OpenTelemetry; a skill classifica o checkout e lê diretamente o commit observado quando ele existe localmente.                      | Codex       |

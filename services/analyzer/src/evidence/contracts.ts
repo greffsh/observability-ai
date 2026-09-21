@@ -1,7 +1,7 @@
 import { Data, type Effect } from "effect"
 import type { Incident } from "../domain/incident.js"
 
-export type EvidenceSourceName = "alert" | "logs" | "metrics" | "traces"
+export type EvidenceSourceName = "alert" | "logs" | "metrics" | "traces" | "deployment"
 export type ExternalEvidenceSourceName = Exclude<EvidenceSourceName, "alert">
 
 export type EvidenceInterval = {

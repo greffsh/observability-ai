@@ -17,31 +17,72 @@ FETCHER = Path(__file__).with_name("fetch_handoff.py")
 INCIDENT_ID = "66abe742-b7b8-45d7-b2dd-2540e869796a"
 
 
+def complete_handoff(incident_id: str) -> dict[str, object]:
+    return {
+        "schemaVersion": 2,
+        "handoffId": "handoff-1",
+        "exportedAt": "2026-08-31T10:10:00.000Z",
+        "incident": {
+            "id": incident_id,
+            "status": "open",
+            "service": "connect-api",
+            "environment": "local",
+            "incidentScope": "http",
+            "mergedIntoIncidentId": None,
+            "detectedAt": "2026-08-31T10:00:00.000Z",
+            "lastActivityAt": "2026-08-31T10:05:00.000Z",
+            "signalsClearedAt": None,
+            "closure": None,
+        },
+        "occurrences": [],
+        "severity": {
+            "assessedAt": "2026-08-31T10:10:00.000Z",
+            "recommendedSeverity": "alta",
+            "serviceCriticality": "medium",
+            "signals": {},
+            "triggeredRules": [],
+            "observations": [],
+            "limitations": [],
+        },
+        "evidence": {
+            "packageId": "evidence-1",
+            "collectedAt": "2026-08-31T10:10:00.000Z",
+            "window": {
+                "start": "2026-08-31T09:55:00.000Z",
+                "end": "2026-08-31T10:10:00.000Z",
+            },
+            "items": [{
+                "id": "logs-1",
+                "source": "logs",
+                "description": "Observed failure",
+                "reference": "http://loki.test/query",
+                "interval": None,
+                "untrusted": True,
+                "data": {},
+            }],
+            "limitations": [],
+        },
+        "deploymentContext": {"status": "not_observed", "revisions": []},
+        "repositoryContext": {"included": False, "checkoutRequiredSeparately": True},
+    }
+
+
 class AnalyzerHandler(BaseHTTPRequestHandler):
     response_status = 200
     response_incident_id = INCIDENT_ID
     authorization: str | None = None
     content_type: str | None = None
     requested_path: str | None = None
+    response_complete = True
 
     def do_POST(self) -> None:  # noqa: N802
         type(self).authorization = self.headers.get("Authorization")
         type(self).content_type = self.headers.get("Content-Type")
         type(self).requested_path = self.path
-        body = json.dumps(
-            {
-                "schemaVersion": 1,
-                "handoffId": "handoff-1",
-                "incident": {
-                    "id": type(self).response_incident_id,
-                    "service": "connect-api",
-                    "environment": "local",
-                },
-                "severity": {"recommendedSeverity": "alta"},
-                "evidence": {"items": [{"id": "logs-1"}], "limitations": []},
-                "repositoryContext": {"included": False, "checkoutRequiredSeparately": True},
-            }
-        ).encode()
+        handoff = complete_handoff(type(self).response_incident_id)
+        if not type(self).response_complete:
+            del handoff["handoffId"]
+        body = json.dumps(handoff).encode()
         self.send_response(type(self).response_status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -61,6 +102,7 @@ class FetchHandoffTest(unittest.TestCase):
         AnalyzerHandler.authorization = None
         AnalyzerHandler.content_type = None
         AnalyzerHandler.requested_path = None
+        AnalyzerHandler.response_complete = True
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), AnalyzerHandler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -116,6 +158,14 @@ class FetchHandoffTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("does not match", result.stderr)
         self.assertNotIn("operator-secret", result.stderr)
+
+    def test_rejects_an_incomplete_handoff(self) -> None:
+        AnalyzerHandler.response_complete = False
+
+        result = self.run_fetcher(INCIDENT_ID)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("handoffId", result.stderr)
 
     def test_rejects_non_uuid_incident_id_before_calling_analyzer(self) -> None:
         result = self.run_fetcher("incident-1")

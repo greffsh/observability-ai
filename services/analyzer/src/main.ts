@@ -5,6 +5,7 @@ import { buildApp } from "./app.js"
 import { migrateDatabase } from "./database/migrate.js"
 import { makeEvidenceCollector } from "./evidence/evidence-collector.js"
 import { makeLokiEvidenceSource } from "./evidence/loki-source.js"
+import { makePrometheusDeploymentEvidenceSource } from "./evidence/prometheus-deployment-source.js"
 import { makePrometheusEvidenceSource } from "./evidence/prometheus-source.js"
 import { makeTempoEvidenceSource } from "./evidence/tempo-source.js"
 import { makeApplicationLogging } from "./logging.js"
@@ -83,6 +84,10 @@ const main = Effect.gen(function* () {
     eventStore,
     analyzerPublicBaseUrl: config.analyzerPublicBaseUrl,
     sources: [
+      makePrometheusDeploymentEvidenceSource({
+        baseUrl: config.prometheusUrl,
+        publicBaseUrl: config.prometheusPublicUrl
+      }),
       makePrometheusEvidenceSource({
         baseUrl: config.prometheusUrl,
         publicBaseUrl: config.prometheusPublicUrl,
