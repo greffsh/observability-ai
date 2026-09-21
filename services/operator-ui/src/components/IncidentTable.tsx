@@ -104,7 +104,9 @@ export const IncidentTable = ({
                     incident={incident}
                     generating={generatingIncidentId === incident.id}
                     copied={copiedHandoffIncidentId === incident.id}
-                    disabled={generatingIncidentId !== null || closingIncidentId !== null}
+                    disabled={
+                      generatingIncidentId === incident.id || closingIncidentId === incident.id
+                    }
                     error={handoffError?.incidentId === incident.id ? handoffError.message : null}
                     onHandoff={onHandoff}
                     onCloseIncident={onCloseIncident}
