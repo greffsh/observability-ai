@@ -12,7 +12,6 @@ import { makeApplicationLogging } from "./logging.js"
 import { makePostgresEventStore } from "./persistence/postgres-event-store.js"
 import { makeRcaHandoffExporter } from "./rca-handoff/handoff-exporter.js"
 import { loadServiceCatalog } from "./service-catalog.js"
-import { makeSeverityAssessor } from "./severity/severity-assessor.js"
 
 const configuration = Config.all({
   port: Config.integer("PORT").pipe(Config.withDefault(8080)),
@@ -103,14 +102,10 @@ const main = Effect.gen(function* () {
       })
     ]
   })
-  const severityAssessor = makeSeverityAssessor({
+  const rcaHandoffExporter = makeRcaHandoffExporter({
     eventStore,
     evidenceCollector,
     catalog: serviceCatalog
-  })
-  const rcaHandoffExporter = makeRcaHandoffExporter({
-    eventStore,
-    severityAssessor
   })
 
   const app = buildApp({

@@ -1,6 +1,3 @@
-import { Data, type Effect } from "effect"
-import type { EvidencePackage } from "../evidence/contracts.js"
-
 export type Severity =
   | "informativa"
   | "baixa"
@@ -35,23 +32,4 @@ export type SeverityAssessment = {
   readonly triggeredRules: ReadonlyArray<SeverityRule>
   readonly observations: ReadonlyArray<string>
   readonly limitations: ReadonlyArray<string>
-}
-
-export type SeverityResult = {
-  readonly assessment: SeverityAssessment
-  readonly evidencePackage: EvidencePackage
-}
-
-export class SeverityIncidentNotFoundError extends Data.TaggedError(
-  "SeverityIncidentNotFoundError"
-)<{ readonly incidentId: string }> {}
-
-export class SeverityUnavailableError extends Data.TaggedError(
-  "SeverityUnavailableError"
-)<{ readonly cause: unknown }> {}
-
-export type SeverityAssessor = {
-  readonly assess: (
-    incidentId: string
-  ) => Effect.Effect<SeverityResult, SeverityIncidentNotFoundError | SeverityUnavailableError>
 }

@@ -1,4 +1,4 @@
-import { Effect, Either, Option } from "effect"
+import { Effect, Option } from "effect"
 import { describe, expect, it } from "vitest"
 import type { AlertEvent } from "../src/contracts/alert-event.ts"
 import {
@@ -29,14 +29,21 @@ const firingEvent = (overrides: Partial<AlertEvent> = {}): AlertEvent => ({
   ...overrides
 })
 
-const incidentIdFor = async (
+const collectionInputFor = async (
   store: ReturnType<typeof makeMemoryEventStore>,
   eventId: string
-): Promise<string> => {
+) => {
   const stored = Option.getOrThrow(await Effect.runPromise(
     store.findByEventId(eventId)
   ))
-  return Option.getOrThrow(Option.fromNullable(stored.incidentId))
+  const incidentId = Option.getOrThrow(Option.fromNullable(stored.incidentId))
+  const incident = Option.getOrThrow(await Effect.runPromise(
+    store.findIncidentById(incidentId)
+  ))
+  const occurrences = await Effect.runPromise(
+    store.findOccurrencesByIncidentId(incidentId)
+  )
+  return { incident, occurrences }
 }
 
 describe("evidence collector", () => {
@@ -44,7 +51,7 @@ describe("evidence collector", () => {
     const store = makeMemoryEventStore()
     const alert = firingEvent()
     await Effect.runPromise(store.record([alert]))
-    const incidentId = await incidentIdFor(store, alert.eventId)
+    const input = await collectionInputFor(store, alert.eventId)
     const metrics: EvidenceSource = {
       source: "metrics",
       collect: ({ window }) => Effect.succeed({
@@ -76,7 +83,7 @@ describe("evidence collector", () => {
       policy: { ...defaultEvidencePolicy, maxStringLength: 100 }
     })
 
-    const result = await Effect.runPromise(collector.collect(incidentId))
+    const result = await Effect.runPromise(collector.collect(input))
 
     expect(result.evidence.map((item) => item.source)).toEqual([
       "alert",
@@ -100,7 +107,7 @@ describe("evidence collector", () => {
     const store = makeMemoryEventStore()
     const alert = firingEvent()
     await Effect.runPromise(store.record([alert]))
-    const incidentId = await incidentIdFor(store, alert.eventId)
+    const input = await collectionInputFor(store, alert.eventId)
     const collector = makeEvidenceCollector({
       eventStore: store,
       sources: [],
@@ -109,32 +116,11 @@ describe("evidence collector", () => {
       makeId: () => "package-test"
     })
 
-    const result = await Effect.runPromise(collector.collect(incidentId))
+    const result = await Effect.runPromise(collector.collect(input))
 
     expect(result.window).toEqual({
       start: new Date("2026-08-31T09:55:00Z"),
       end: new Date("2026-08-31T10:25:00Z")
     })
-  })
-
-  it("distinguishes an unknown incident from source unavailability", async () => {
-    const store = makeMemoryEventStore()
-    const collector = makeEvidenceCollector({
-      eventStore: store,
-      sources: [],
-      analyzerPublicBaseUrl: "http://analyzer.test"
-    })
-
-    const result = await Effect.runPromise(
-      Effect.either(collector.collect("missing"))
-    )
-
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toMatchObject({
-        _tag: "IncidentEvidenceNotFoundError",
-        incidentId: "missing"
-      })
-    }
   })
 })

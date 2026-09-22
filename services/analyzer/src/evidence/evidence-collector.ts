@@ -1,9 +1,8 @@
 import { randomUUID } from "node:crypto"
-import { Effect, Either, Option } from "effect"
+import { Effect, Either } from "effect"
 import type { EventStore } from "../persistence/event-store.js"
 import {
   EvidencePersistenceError,
-  IncidentEvidenceNotFoundError,
   type EvidenceCollector,
   type EvidenceItem,
   type EvidencePackage,
@@ -52,19 +51,8 @@ export const makeEvidenceCollector = (
   const analyzerPublicBaseUrl = options.analyzerPublicBaseUrl.replace(/\/$/, "")
 
   return {
-    collect: (incidentId) => Effect.gen(function* () {
-      const incidentResult = yield* options.eventStore.findIncidentById(incidentId).pipe(
-        Effect.mapError((cause) => new EvidencePersistenceError({ cause }))
-      )
-
-      if (Option.isNone(incidentResult)) {
-        return yield* new IncidentEvidenceNotFoundError({ incidentId })
-      }
-
-      const incident = incidentResult.value
-      const occurrences = yield* options.eventStore.findOccurrencesByIncidentId(incidentId).pipe(
-        Effect.mapError((cause) => new EvidencePersistenceError({ cause }))
-      )
+    collect: ({ incident, occurrences }) => Effect.gen(function* () {
+      const incidentId = incident.id
       const events = yield* options.eventStore.findByIncidentId(incidentId).pipe(
         Effect.mapError((cause) => new EvidencePersistenceError({ cause }))
       )

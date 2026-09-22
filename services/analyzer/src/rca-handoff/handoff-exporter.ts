@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto"
 import { Effect, Option } from "effect"
 import type { Incident } from "../domain/incident.js"
-import type { EvidenceItem } from "../evidence/contracts.js"
+import type { EvidenceCollector, EvidenceItem } from "../evidence/contracts.js"
 import { sanitizeString, sanitizeUnknown } from "../evidence/sanitize.js"
 import type { EventStore } from "../persistence/event-store.js"
-import type { SeverityAssessment, SeverityAssessor } from "../severity/contracts.js"
+import type { ServiceCatalog } from "../service-catalog.js"
+import { classifySeverity } from "../severity/classify-severity.js"
+import type { SeverityAssessment } from "../severity/contracts.js"
 import {
   RcaHandoffIncidentNotFoundError,
   RcaHandoffUnavailableError,
@@ -15,7 +17,8 @@ import {
 
 type RcaHandoffExporterOptions = {
   readonly eventStore: EventStore
-  readonly severityAssessor: SeverityAssessor
+  readonly evidenceCollector: EvidenceCollector
+  readonly catalog: ServiceCatalog
   readonly maxStringLength?: number
   readonly now?: () => Date
   readonly makeId?: () => string
@@ -165,27 +168,29 @@ export const makeRcaHandoffExporter = (
 
   return {
     export: (incidentId) => Effect.gen(function* () {
-      const severityResult = yield* options.severityAssessor.assess(incidentId).pipe(
-        Effect.mapError((cause) => cause._tag === "SeverityIncidentNotFoundError"
-          ? new RcaHandoffIncidentNotFoundError({ incidentId })
-          : new RcaHandoffUnavailableError({ cause }))
-      )
-      const incident = yield* options.eventStore.findIncidentById(incidentId).pipe(
+      const incidentResult = yield* options.eventStore.findIncidentById(incidentId).pipe(
         Effect.mapError((cause) => new RcaHandoffUnavailableError({ cause }))
       )
-      if (Option.isNone(incident)) {
+      if (Option.isNone(incidentResult)) {
         return yield* new RcaHandoffIncidentNotFoundError({ incidentId })
       }
+      const incident = incidentResult.value
       const occurrences = yield* options.eventStore.findOccurrencesByIncidentId(incidentId).pipe(
         Effect.mapError((cause) => new RcaHandoffUnavailableError({ cause }))
       )
-      const evidencePackage = severityResult.evidencePackage
+      const evidencePackage = yield* options.evidenceCollector.collect({
+        incident,
+        occurrences
+      }).pipe(
+        Effect.mapError((cause) => new RcaHandoffUnavailableError({ cause }))
+      )
+      const severity = classifySeverity(incident, evidencePackage, options.catalog)
 
       return {
         schemaVersion: 2,
         handoffId: makeId(),
         exportedAt: now(),
-        incident: compactIncident(incident.value, maxStringLength),
+        incident: compactIncident(incident, maxStringLength),
         occurrences: [...occurrences]
           .sort((left, right) => left.startedAt.getTime() - right.startedAt.getTime() ||
             left.id.localeCompare(right.id))
@@ -197,7 +202,7 @@ export const makeRcaHandoffExporter = (
             endedAt: occurrence.endedAt,
             firingObserved: occurrence.firingObserved
           })),
-        severity: sanitizeSeverity(severityResult.assessment, maxStringLength),
+        severity: sanitizeSeverity(severity, maxStringLength),
         evidence: {
           packageId: evidencePackage.packageId,
           collectedAt: evidencePackage.collectedAt,
@@ -209,7 +214,7 @@ export const makeRcaHandoffExporter = (
           }))
         },
         deploymentContext: deploymentContextFrom(
-          incident.value.service,
+          incident.service,
           evidencePackage.evidence,
           maxStringLength
         ),

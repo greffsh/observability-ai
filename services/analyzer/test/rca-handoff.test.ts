@@ -5,7 +5,6 @@ import type { EvidenceSource } from "../src/evidence/contracts.ts"
 import { makeEvidenceCollector } from "../src/evidence/evidence-collector.ts"
 import { makeMemoryEventStore } from "../src/persistence/memory-event-store.ts"
 import { makeRcaHandoffExporter } from "../src/rca-handoff/handoff-exporter.ts"
-import { makeSeverityAssessor } from "../src/severity/severity-assessor.ts"
 import { checkoutServiceCatalog } from "./fixtures/service-catalog.ts"
 
 describe("RCA handoff exporter", () => {
@@ -79,14 +78,10 @@ describe("RCA handoff exporter", () => {
       now: () => new Date("2026-09-03T12:01:00Z"),
       makeId: () => "evidence-1"
     })
-    const severityAssessor = makeSeverityAssessor({
-      eventStore: store,
-      evidenceCollector,
-      catalog: checkoutServiceCatalog
-    })
     const exporter = makeRcaHandoffExporter({
       eventStore: store,
-      severityAssessor,
+      evidenceCollector,
+      catalog: checkoutServiceCatalog,
       now: () => new Date("2026-09-03T12:01:01Z"),
       makeId: () => "handoff-1"
     })

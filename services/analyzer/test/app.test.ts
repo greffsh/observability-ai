@@ -5,7 +5,6 @@ import { makeEvidenceCollector } from "../src/evidence/evidence-collector.ts"
 import { EventStoreError, type EventStore } from "../src/persistence/event-store.ts"
 import { makeMemoryEventStore } from "../src/persistence/memory-event-store.ts"
 import { makeRcaHandoffExporter } from "../src/rca-handoff/handoff-exporter.ts"
-import { makeSeverityAssessor } from "../src/severity/severity-assessor.ts"
 import { firingWebhookFixture } from "./fixtures/grafana-webhook.ts"
 import { checkoutServiceCatalog } from "./fixtures/service-catalog.ts"
 
@@ -22,11 +21,6 @@ beforeEach(() => {
     now: () => new Date("2026-08-28T13:21:05Z"),
     makeId: () => "evidence-package-1"
   })
-  const severityAssessor = makeSeverityAssessor({
-    eventStore,
-    evidenceCollector,
-    catalog: checkoutServiceCatalog
-  })
   app = buildApp({
     databaseResetEnabled: true,
     eventStore,
@@ -35,7 +29,8 @@ beforeEach(() => {
     operatorToken: "test-operator-token",
     rcaHandoffExporter: makeRcaHandoffExporter({
       eventStore,
-      severityAssessor,
+      evidenceCollector,
+      catalog: checkoutServiceCatalog,
       now: () => new Date("2026-08-28T13:21:05Z"),
       makeId: () => "handoff-1"
     }),
@@ -515,6 +510,17 @@ describe("Analyzer HTTP API", () => {
     expect(response.json()).toEqual({ error: "incident_not_found" })
   })
 
+  it("returns 404 when exporting a handoff for an unknown incident", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/incidents/unknown-incident/rca-handoff",
+      headers: { authorization: "Bearer test-operator-token" }
+    })
+
+    expect(response.statusCode).toBe(404)
+    expect(response.json()).toEqual({ error: "incident_not_found" })
+  })
+
   it("keeps evidence and severity collection behind the handoff interface", async () => {
     for (const suffix of ["evidence", "severity"]) {
       const response = await app.inject({
@@ -632,11 +638,6 @@ describe("Analyzer HTTP API", () => {
       sources: [],
       analyzerPublicBaseUrl: "http://analyzer.test"
     })
-    const severityAssessor = makeSeverityAssessor({
-      eventStore: unavailableStore,
-      evidenceCollector: unavailableEvidenceCollector,
-      catalog: checkoutServiceCatalog
-    })
     const unavailableApp = buildApp({
       eventStore: unavailableStore,
       grafanaWebhookSecret: "test-webhook-secret",
@@ -644,7 +645,8 @@ describe("Analyzer HTTP API", () => {
       operatorToken: "test-operator-token",
       rcaHandoffExporter: makeRcaHandoffExporter({
         eventStore: unavailableStore,
-        severityAssessor
+        evidenceCollector: unavailableEvidenceCollector,
+        catalog: checkoutServiceCatalog
       }),
       now: () => new Date("2026-08-28T13:21:05Z")
     })

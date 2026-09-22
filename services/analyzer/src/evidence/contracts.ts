@@ -1,4 +1,5 @@
 import { Data, type Effect } from "effect"
+import type { AlertOccurrence } from "../domain/alert-occurrence.js"
 import type { Incident } from "../domain/incident.js"
 
 export type EvidenceSourceName = "alert" | "logs" | "metrics" | "traces" | "deployment"
@@ -74,24 +75,19 @@ export type EvidenceSource = {
   ) => Effect.Effect<SourceCollection, EvidenceSourceError>
 }
 
-export class IncidentEvidenceNotFoundError extends Data.TaggedError(
-  "IncidentEvidenceNotFoundError"
-)<{
-  readonly incidentId: string
-}> {}
-
 export class EvidencePersistenceError extends Data.TaggedError(
   "EvidencePersistenceError"
 )<{
   readonly cause: unknown
 }> {}
 
-export type EvidenceCollectorError =
-  | IncidentEvidenceNotFoundError
-  | EvidencePersistenceError
+export type EvidenceCollectionInput = {
+  readonly incident: Incident
+  readonly occurrences: ReadonlyArray<AlertOccurrence>
+}
 
 export type EvidenceCollector = {
   readonly collect: (
-    incidentId: string
-  ) => Effect.Effect<EvidencePackage, EvidenceCollectorError>
+    input: EvidenceCollectionInput
+  ) => Effect.Effect<EvidencePackage, EvidencePersistenceError>
 }

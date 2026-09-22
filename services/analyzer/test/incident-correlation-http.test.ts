@@ -4,7 +4,6 @@ import { buildApp } from "../src/app.ts"
 import { makeEvidenceCollector } from "../src/evidence/evidence-collector.ts"
 import { makeMemoryEventStore } from "../src/persistence/memory-event-store.ts"
 import { makeRcaHandoffExporter } from "../src/rca-handoff/handoff-exporter.ts"
-import { makeSeverityAssessor } from "../src/severity/severity-assessor.ts"
 import { checkoutServiceCatalog } from "./fixtures/service-catalog.ts"
 
 type AlertInput = {
@@ -51,18 +50,16 @@ const makeTestApp = () => {
     sources: [],
     analyzerPublicBaseUrl: "http://analyzer.test"
   })
-  const severityAssessor = makeSeverityAssessor({
-    eventStore,
-    evidenceCollector,
-    catalog: checkoutServiceCatalog
-  })
-
   return buildApp({
     eventStore,
     grafanaWebhookSecret: "test-webhook-secret",
     operatorId: "test-operator",
     operatorToken: "test-operator-token",
-    rcaHandoffExporter: makeRcaHandoffExporter({ eventStore, severityAssessor })
+    rcaHandoffExporter: makeRcaHandoffExporter({
+      eventStore,
+      evidenceCollector,
+      catalog: checkoutServiceCatalog
+    })
   })
 }
 
