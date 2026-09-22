@@ -56,27 +56,3 @@ export const fetchJson = <A>(
       : "Source request failed"
   })
 })
-
-export const fetchText = (
-  url: URL,
-  options: RequestOptions
-): Effect.Effect<string, EvidenceSourceError> => Effect.tryPromise({
-  try: async () => {
-    const response = await fetch(url, {
-      ...(options.headers === undefined ? {} : { headers: options.headers }),
-      signal: AbortSignal.timeout(options.timeoutMs)
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`)
-    }
-
-    return await readLimitedText(response, options.maxBytes)
-  },
-  catch: (cause) => new EvidenceSourceError({
-    source: options.source,
-    reason: cause instanceof Error
-      ? `Source request failed: ${cause.message}`
-      : "Source request failed"
-  })
-})

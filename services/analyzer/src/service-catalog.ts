@@ -1,15 +1,12 @@
 import { readFile } from "node:fs/promises"
 import { Data, Effect, Schema } from "effect"
 
-export const ImpactMetricSignalSchema = Schema.Literal(
-  "totalRequests",
-  "failedRequests",
-  "failureState",
-  "availability",
-  "lastChange"
-)
-
-export type ImpactMetricSignal = typeof ImpactMetricSignalSchema.Type
+export type ImpactMetricSignal =
+  | "totalRequests"
+  | "failedRequests"
+  | "failureState"
+  | "availability"
+  | "lastChange"
 
 const ImpactQueriesSchema = Schema.Struct({
   totalRequests: Schema.optional(Schema.String),
@@ -47,7 +44,6 @@ export const ServiceCatalogSchema = Schema.Struct({
   })
 })
 
-export type ImpactQueries = typeof ImpactQueriesSchema.Type
 export type EnvironmentProfile = typeof EnvironmentProfileSchema.Type
 export type ServiceProfile = typeof ServiceProfileSchema.Type
 export type ServiceCatalog = typeof ServiceCatalogSchema.Type
